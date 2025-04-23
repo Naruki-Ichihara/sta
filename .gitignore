@@ -7,6 +7,8 @@ __pycache__/
 Scripts/
 Lib/
 Include/
+share/
+
 # C extensions
 *.so
 
