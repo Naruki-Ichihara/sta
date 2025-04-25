@@ -229,7 +229,7 @@ class App(ft.Column):
             return
 
         try:
-            self.UCS, self.UCstrain, self.sigma, self.eps = estimate_compression_strength_from_profile(self.volume, self.material_params)
+            self.UCS, self.UCstrain, self.sigma, self.eps = estimate_compression_strength_from_profile(self.varphi, self.material_params)
         except Exception as ex:
             print(f"[ERROR] {ex}")
     
@@ -257,7 +257,7 @@ class App(ft.Column):
             return
 
         try:
-            df = compute_static_data(self.theta, self.phi, self.varphi, drop=self.noise_scale)
+            df = compute_static_data(self.theta, self.phi, self.varphi, drop=int(self.noise_scale))
             self.file_picker_save_volume.on_result = lambda ev: self._save_csv_to_path(ev, df)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save Orientation Data As CSV",
