@@ -17,6 +17,7 @@ def import_image(image_path: str,
         np.ndarray: The imported image in the specified color space.
     """
     image = cv.imread(image_path)
+    print(f"Importing:{image_path}")
     if cvt_control is not None:
         image = cv.cvtColor(image, cvt_control)
     return image

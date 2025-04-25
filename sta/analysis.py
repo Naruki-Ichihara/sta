@@ -2,6 +2,20 @@ import numpy as np
 import numba
 import numba_progress
 from skimage.feature import structure_tensor
+import pandas as pd
+
+def drop_edges_3D(width: int, volume: np.ndarray) -> np.ndarray:
+    """Drop edges of 3D volume.
+
+    Args:
+        width (int): Width of edges.
+        volume (np.ndarray): 3D volume.
+
+    Returns:
+        np.ndarray: 3D volume without edges.
+
+    """
+    return volume[width:volume.shape[0]-width, width:volume.shape[1]-width, width:volume.shape[2]-width]
 
 def compute_structure_tesnsor(volume: np.ndarray, noise_scale: int, mode: str = 'nearest') -> np.ndarray:
     """
@@ -27,7 +41,7 @@ def compute_structure_tesnsor(volume: np.ndarray, noise_scale: int, mode: str = 
     return tensors
 
 @numba.njit(parallel=True, cache=True)
-def _orientation_function(structureTensor, progressProxy):
+def _orientation_function(structureTensor):
     symmetricComponents3d = [[0, 0], [0, 1], [0, 2], [1, 1], [1, 2], [2, 2]]
 
     theta = np.zeros(structureTensor.shape[1:], dtype="<f4")
@@ -53,12 +67,10 @@ def _orientation_function(structureTensor, progressProxy):
                 theta[z, y, x] = np.rad2deg(np.arctan2(selectedEigenVector[2], selectedEigenVector[0]))
                 phi[z, y, x] = np.rad2deg(np.arctan2(selectedEigenVector[1], selectedEigenVector[0]))
 
-        progressProxy.update(1)
-
     return theta, phi
 
 @numba.njit(parallel=True, cache=True)
-def _orientation_function_reference(structureTensor, progressProxy, reference_vector):
+def _orientation_function_reference(structureTensor, reference_vector):
 
     symmetricComponents3d = [[0, 0], [0, 1], [0, 2], [1, 1], [1, 2], [2, 2]]
 
@@ -84,8 +96,6 @@ def _orientation_function_reference(structureTensor, progressProxy, reference_ve
 
                 theta[z, y, x] = np.rad2deg(np.arccos(np.dot(selectedEigenVector, axial_vec)))
 
-        progressProxy.update(1)
-
     return theta
 
 def compute_orientation(structure_tensor, reference_vector=None):
@@ -96,10 +106,55 @@ def compute_orientation(structure_tensor, reference_vector=None):
         tuple: Orientation angles.
     """
     if reference_vector is None:
-        with numba_progress.ProgressBar(total=structure_tensor.shape[1]) as progress:
-            theta, phi = _orientation_function(structure_tensor, progress)
+        print("Computing orientation function without reference vector.")
+        print("Progressing...")
+        theta, phi = _orientation_function(structure_tensor)
+        print("Progress complete.")
         return theta, phi
     else:
-        with numba_progress.ProgressBar(total=structure_tensor.shape[1]) as progress:
-            theta = _orientation_function_reference(structure_tensor, progress, reference_vector)
+        print("Computing orientation function with reference vector.")
+        print("Progressing...")
+        theta = _orientation_function_reference(structure_tensor, reference_vector)
+        print("Progress complete.")
         return theta
+    
+def compute_static_data(theta, phi, varphi, drop=10):
+    """ Compute static data.
+    Args:
+        theta (np.ndarray): Theta angles.
+        phi (np.ndarray): Phi angles.
+        varphi (np.ndarray): Varphi angles.
+        drop (int): Number of pixels to drop from edges.
+    Returns:
+        pd.DataFrame: Static data.
+    """
+    theta = drop_edges_3D(drop, theta)
+    phi = drop_edges_3D(drop, phi)
+    varphi = drop_edges_3D(drop, varphi)
+
+    # Flatten the arrays
+    flatten_theta = theta.ravel()
+    flatten_phi = phi.ravel()
+    flatten_varphi = varphi.ravel()
+
+    # Histogram
+    hist_theta, bins_theta = np.histogram(flatten_theta, bins=1000, density=True)
+    hist_phi, bins_phi = np.histogram(flatten_phi, bins=1000, density=True)
+    hist_varphi, bins_varphi = np.histogram(flatten_varphi, bins=1000, density=True)
+
+    # Pandas Series
+    hist_theta_series = pd.Series(hist_theta, name="Histgram")
+    bin_theta_series = pd.Series(bins_theta[1:], name="Bin")
+    hist_phi_series = pd.Series(hist_phi, name="Histgram")
+    bin_phi_series = pd.Series(bins_phi[1:], name="Bin")
+    hist_varphi_series = pd.Series(hist_varphi, name="Histgram")
+    bin_varphi_series = pd.Series(bins_varphi[1:], name="Bin")
+
+    # Pandas DF
+    static_df_theta = pd.DataFrame([bin_theta_series, hist_theta_series], index=["Bin", "Histgram"]).transpose()
+    static_df_phi = pd.DataFrame([bin_phi_series, hist_phi_series], index=["Bin", "Histgram"]).transpose()
+    setatic_df_varphi = pd.DataFrame([bin_varphi_series, hist_varphi_series], index=["Bin", "Histgram"]).transpose()
+
+    # Combine dataframes
+    static_df = pd.concat([static_df_theta, static_df_phi, setatic_df_varphi], axis=1)
+    return static_df
