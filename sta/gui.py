@@ -31,8 +31,8 @@ class App(ft.Column):
         sys.stdout = ConsoleOutput(self.console_output)
 
         self.template_field = ft.TextField(hint_text="Path template", read_only=True, width=600)
-        self.digit_field = ft.TextField(hint_text="Digit", on_submit=self._set_digit, width=200)
-        self.format_field = ft.TextField(hint_text="Format", on_submit=self._set_format, width=200)
+        self.digit_field = ft.TextField(hint_text="Digit", read_only=True, width=200)
+        self.format_field = ft.TextField(hint_text="Format", read_only=True, width=200)
 
         self._init_state()
         self.controls = self._build_ui()
@@ -78,36 +78,62 @@ class App(ft.Column):
             self._build_orientation_row(),
             self._section_header("Step 3: Estimate Compressive strength."),
             self._build_material_param_inputs(),
-            self._build_compute_compressive_strength_button()
+            self._build_compute_compressive_strength_button(),
+            self._section_header("Step 4: Rebuild 3D model of fibers.")
         ]
 
     def _build_material_param_inputs(self):
         self.material_inputs = {
-            "longitudinal_modulus": ft.TextField(hint_text="Longitudinal Modulus (E1)", width=150),
-            "transverse_modulus": ft.TextField(hint_text="Transverse Modulus (E2)", width=150),
-            "poisson_ratio": ft.TextField(hint_text="Poisson Ratio (ν12)", width=150),
-            "shear_modulus": ft.TextField(hint_text="Shear Modulus (G12)", width=150),
-            "tau_y": ft.TextField(hint_text="Tau_y (Shear Yield Stress)", width=150),
-            "K": ft.TextField(hint_text="K (Hardening Coefficient)", width=150),
-            "n": ft.TextField(hint_text="n (Hardening Exponent)", width=150),
+        "longitudinal_modulus": ft.TextField(width=150),
+        "transverse_modulus": ft.TextField(width=150),
+        "poisson_ratio": ft.TextField(width=150),
+        "shear_modulus": ft.TextField(width=150),
+        "tau_y": ft.TextField(width=150),
+        "K": ft.TextField(width=150),
+        "n": ft.TextField(width=150),
         }
-        apply_button = ft.TextButton("Apply", on_click=self._apply_material_params, width=100)
-        return ft.Row([
-            self.material_inputs["longitudinal_modulus"],
-            self.material_inputs["transverse_modulus"],
-            self.material_inputs["poisson_ratio"],
-            self.material_inputs["shear_modulus"],
-            self.material_inputs["tau_y"],
-            self.material_inputs["K"],
-            self.material_inputs["n"],
-            apply_button
-        ], alignment=ft.MainAxisAlignment.CENTER)
+
+        units = {
+        "longitudinal_modulus": "[MPa]",
+        "transverse_modulus": "[MPa]",
+        "poisson_ratio": "[-]",
+        "shear_modulus": "[MPa]",
+        "tau_y": "[MPa]",
+        "K": "[MPa]",
+        "n": "[-]",
+        }
+
+        descriptions = {
+        "longitudinal_modulus": "Longitudinal Modulus (E1)",
+        "transverse_modulus": "Transverse Modulus (E2)",
+        "poisson_ratio": "Poisson Ratio (ν12)",
+        "shear_modulus": "Shear Modulus (G12)",
+        "tau_y": "Shear Yield Stress (τy)",
+        "K": "Hardening Coefficient (K)",
+        "n": "Hardening Exponent (n)",
+        }
+
+        param_rows = []
+        for key in self.material_inputs.keys():
+            row = ft.Row([
+                ft.Text(descriptions[key], width=300),
+                self.material_inputs[key],
+                ft.Text(units[key], width=100),
+            ], alignment=ft.MainAxisAlignment.START)
+            param_rows.append(row)
+
+        return ft.Column(
+            controls=param_rows,
+            spacing=10,
+            alignment=ft.MainAxisAlignment.CENTER
+        )
 
     def _section_header(self, text):
         return ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM)
     
     def _build_compute_compressive_strength_button(self):
         return ft.Row([
+            ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
             ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
             ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280),
             ], alignment=ft.MainAxisAlignment.CENTER)
@@ -169,17 +195,6 @@ class App(ft.Column):
         self.file_picker_file.on_result = pick_result
         self.file_picker_file.pick_files(allow_multiple=False, dialog_title="Select First Image File")
 
-    def _set_digit(self, e):
-        self.digit = self._parse_int(e.data, "Digit", 0, 9)
-
-    def _set_format(self, e):
-        fmt = e.data.lower()
-        supported = ["png", "jpg", "jpeg", "tiff", "bmp", "tif", "dcm"]
-        if fmt not in supported:
-            print(f"[ERROR] Unsupported format: {fmt}")
-            raise ValueError(f"Unsupported format: {fmt}")
-        self.format = fmt
-
     def _set_start_index(self, e): self.start_index = self._parse_int(e.data, "Start index")
     def _set_end_index(self, e): self.end_index = self._parse_int(e.data, "End index")
     def _set_start_pixel_x(self, e): self.start_pixel_x = self._parse_int(e.data, "Start Pixel X")
@@ -189,7 +204,7 @@ class App(ft.Column):
 
     def _set_noise_scale(self, e):
         try:
-            self.noise_scale = float(e.data)
+            self.noise_scale = int(e.data)
             print(f"[INFO] Noise scale set to {self.noise_scale}")
         except ValueError:
             print(f"[ERROR] Invalid noise scale: {e.data}")
@@ -207,8 +222,10 @@ class App(ft.Column):
             dialog_title="Save Volume As",
             file_name="ct_volume.npy"
         )
+        print(f"[SUCCESS] Volume saved to {e.path}")
 
     def _compute_orientations(self, e):
+        print("[INFO] Take few minutes to compute orientations. Beginning...")
         try:
             if self.volume is None:
                 raise ValueError("Volume must be imported first.")
@@ -242,7 +259,7 @@ class App(ft.Column):
         strain_series = pd.Series(self.eps, name="Strain")
 
         try:
-            df = pd.DataFrame([stress_series, strain_series], index=["Bin", "Histgram"]).transpose()
+            df = pd.DataFrame([stress_series, strain_series], index=["Stress", "Strain"]).transpose()
             self.file_picker_save_volume.on_result = lambda ev: self._save_csv_to_path(ev, df)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save SS curve Data As CSV",
