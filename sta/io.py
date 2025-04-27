@@ -17,7 +17,7 @@ def import_image(image_path: str,
         np.ndarray: The imported image in the specified color space.
     """
     image = cv.imread(image_path)
-    print(f"Importing:{image_path}")
+    # print(f"[INFO] Importing: {image_path}")
     if cvt_control is not None:
         image = cv.cvtColor(image, cvt_control)
     return image
@@ -90,6 +90,7 @@ def import_image_sequence(template: str,
         """
     if processing is None:
         processing = lambda x: x
+    print(f"[INFO] Importing sequence: {template} from {start_index} to {end_index}")
     if format == "dcm":
         volume = np.stack(
         [processing(import_dicom(_get_image_path(template, i, digit, format)))
@@ -106,6 +107,7 @@ def import_image_sequence(template: str,
         if save_path is None:
             raise ValueError("Save path must be provided when save is True.")
         np.save(save_path, volume)
+    print(f"[INFO] Imported {volume.shape[0]} images of shape {volume.shape[1:]}")
     return volume
 
 def trim_image(image, start: tuple[int, int], end: tuple[int, int]) -> np.ndarray:

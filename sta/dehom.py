@@ -103,13 +103,12 @@ class Fibers:
                 break
         return points
     
-def generate_fiber_stl(fibers: Fibers, path: str) -> None:
+def generate_fiber_stl(fibers: Fibers) -> None:
     """
     Generate an STL file for the fibers.
 
     Args:
         fibers (Fibers): The Fibers object containing fiber data.
-        path (str): Path to save the STL file.
     """
     if fibers.points is None:
         raise ValueError("No points to generate STL")
@@ -129,12 +128,11 @@ def generate_fiber_stl(fibers: Fibers, path: str) -> None:
         fiber_path = np.array(fiber_path)
 
         poly = pv.Spline(fiber_path, n_points=len(fiber_path))
-        tube = poly.tube(radius=radius, n_sides=3, capping=True)
+        tube = poly.tube(radius=radius, n_sides=10, capping=True)
         tubes.append(tube)
 
     full_mesh = tubes[0]
     for tube in tubes[1:]:
         full_mesh += tube
 
-    full_mesh.save(path)
-    print(f"STL saved: {path}")
+    return full_mesh

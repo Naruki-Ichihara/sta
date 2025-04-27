@@ -6,28 +6,34 @@ import pandas as pd
 from sta.io import import_image_sequence, trim_image
 from sta.analysis import compute_structure_tesnsor, compute_orientation, compute_static_data
 from sta.simulation import MaterialParams, estimate_compression_strength_from_profile
+from sta.dehom import Fibers, generate_fiber_stl
 
 class ConsoleOutput:
-    def __init__(self, text_control):
-        self.text_control = text_control
+    def __init__(self, list_view_control):
+        self.list_view_control = list_view_control
 
     def write(self, message):
-        self.text_control.value += str(message)
-        self.text_control.update()
+        lines = str(message).splitlines()
+        for line in lines:
+            self.list_view_control.controls.append(
+                ft.Text(line, size=12, color="white")
+            )
+        self.list_view_control.update()
 
     def flush(self):
         pass
 
-class App(ft.Column):
+class App:
     def __init__(self, file_picker_file, file_picker_save_volume):
-        super().__init__()
         self.file_picker_file = file_picker_file
         self.file_picker_save_volume = file_picker_save_volume
 
-        self.console_output = ft.Text(
-            value="", selectable=True, max_lines=20,
-            expand=True, overflow="scroll"
-        )
+        self.console_output = ft.ListView(
+            controls=[],
+            auto_scroll=True,
+            expand=True,
+            spacing=1
+            )
         sys.stdout = ConsoleOutput(self.console_output)
 
         self.template_field = ft.TextField(hint_text="Path template", read_only=True, width=600)
@@ -36,8 +42,6 @@ class App(ft.Column):
 
         self._init_state()
         self.controls = self._build_ui()
-        self.width = 1200
-        self.spacing = 20
 
         self.UCS = None
         self.UCstrain = None
@@ -45,6 +49,7 @@ class App(ft.Column):
         self.eps = None
 
     def _init_state(self):
+        self.fibers_model = None
         self.material_params = None
         self.template = ""
         self.digit = 4
@@ -60,16 +65,13 @@ class App(ft.Column):
         self.theta = None
         self.phi = None
         self.varphi = None
+        self.fiber_diameter = None
+        self.fiber_volume_fraction = None
+        self.scale = None
+        self.step_size = None
 
     def _build_ui(self):
         return [
-            self._section_header("Console Output"),
-            ft.Container(
-                content=self.console_output,
-                height=200,
-                width=1200,
-                bgcolor="#DADADA"
-            ),
             self._section_header("Step 1: Import Image Sequences."),
             self._build_image_input_row(),
             self._build_crop_input_row(),
@@ -79,38 +81,74 @@ class App(ft.Column):
             self._section_header("Step 3: Estimate Compressive strength."),
             self._build_material_param_inputs(),
             self._build_compute_compressive_strength_button(),
-            self._section_header("Step 4: Rebuild 3D model of fibers.")
+            self._section_header("Step 4: Rebuild 3D model of fibers."),
+            self._build_model_params_inputs(),
+            self._build_modelconstruction_button()
         ]
+
+    def _section_header(self, text):
+        return ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+
+    def _build_image_input_row(self):
+        return ft.Row([
+            ft.TextButton("Select first image", on_click=self._select_file, width=160),
+            self.template_field,
+            self.digit_field,
+            self.format_field
+        ], alignment=ft.MainAxisAlignment.CENTER)
+
+    def _build_crop_input_row(self):
+        return ft.Row([
+            ft.TextField(hint_text="Start index", on_submit=self._set_start_index, width=150),
+            ft.TextField(hint_text="End index", on_submit=self._set_end_index, width=150),
+            ft.TextField(hint_text="Start Pixel x", on_submit=self._set_start_pixel_x, width=150),
+            ft.TextField(hint_text="Start Pixel y", on_submit=self._set_start_pixel_y, width=150),
+            ft.TextField(hint_text="End Pixel x", on_submit=self._set_end_pixel_x, width=150),
+            ft.TextField(hint_text="End Pixel y", on_submit=self._set_end_pixel_y, width=150)
+        ], alignment=ft.MainAxisAlignment.CENTER)
+
+    def _build_import_buttons(self):
+        return ft.Row([
+            ft.TextButton("Import image sequence", on_click=self._import_images, width=280),
+            ft.TextButton("Save volume as npy", on_click=self._save_volume, width=280)
+        ], alignment=ft.MainAxisAlignment.CENTER)
+
+    def _build_orientation_row(self):
+        return ft.Row([
+            ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
+            ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
+            ft.TextButton("Export data", on_click=self._export_histgram, width=280)
+        ], alignment=ft.MainAxisAlignment.CENTER)
 
     def _build_material_param_inputs(self):
         self.material_inputs = {
-        "longitudinal_modulus": ft.TextField(width=150),
-        "transverse_modulus": ft.TextField(width=150),
-        "poisson_ratio": ft.TextField(width=150),
-        "shear_modulus": ft.TextField(width=150),
-        "tau_y": ft.TextField(width=150),
-        "K": ft.TextField(width=150),
-        "n": ft.TextField(width=150),
+            "longitudinal_modulus": ft.TextField(width=150),
+            "transverse_modulus": ft.TextField(width=150),
+            "poisson_ratio": ft.TextField(width=150),
+            "shear_modulus": ft.TextField(width=150),
+            "tau_y": ft.TextField(width=150),
+            "K": ft.TextField(width=150),
+            "n": ft.TextField(width=150)
         }
 
         units = {
-        "longitudinal_modulus": "[MPa]",
-        "transverse_modulus": "[MPa]",
-        "poisson_ratio": "[-]",
-        "shear_modulus": "[MPa]",
-        "tau_y": "[MPa]",
-        "K": "[MPa]",
-        "n": "[-]",
+            "longitudinal_modulus": "[MPa]",
+            "transverse_modulus": "[MPa]",
+            "poisson_ratio": "[-]",
+            "shear_modulus": "[MPa]",
+            "tau_y": "[MPa]",
+            "K": "[MPa]",
+            "n": "[-]"
         }
 
         descriptions = {
-        "longitudinal_modulus": "Longitudinal Modulus (E1)",
-        "transverse_modulus": "Transverse Modulus (E2)",
-        "poisson_ratio": "Poisson Ratio (ν12)",
-        "shear_modulus": "Shear Modulus (G12)",
-        "tau_y": "Shear Yield Stress (τy)",
-        "K": "Hardening Coefficient (K)",
-        "n": "Hardening Exponent (n)",
+            "longitudinal_modulus": "Longitudinal Modulus (E1)",
+            "transverse_modulus": "Transverse Modulus (E2)",
+            "poisson_ratio": "Poisson Ratio (v12)",
+            "shear_modulus": "Shear Modulus (G12)",
+            "tau_y": "Shear Yield Stress (τy)",
+            "K": "Hardening Coefficient (K)",
+            "n": "Hardening Exponent (n)"
         }
 
         param_rows = []
@@ -118,25 +156,51 @@ class App(ft.Column):
             row = ft.Row([
                 ft.Text(descriptions[key], width=300),
                 self.material_inputs[key],
-                ft.Text(units[key], width=100),
+                ft.Text(units[key], width=100)
             ], alignment=ft.MainAxisAlignment.START)
             param_rows.append(row)
 
-        return ft.Column(
-            controls=param_rows,
-            spacing=10,
-            alignment=ft.MainAxisAlignment.CENTER
-        )
-
-    def _section_header(self, text):
-        return ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+        return ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER)
     
+    def _build_model_params_inputs(self):
+        self.model_inputs = {
+            "fiber_diameter": ft.TextField(width=150),
+            "fiber_volume_fraction": ft.TextField(width=150),
+            "scale": ft.TextField(width=150),
+            "step_size": ft.TextField(width=150)
+        }
+
+        units = {
+            "fiber_diameter": "[px]",
+            "fiber_volume_fraction": "[-]",
+            "scale": "[-]",
+            "step_size": "[px]"
+        }
+
+        descriptions = {
+            "fiber_diameter": "Diameter of each fibers (Typically 7um)",
+            "fiber_volume_fraction": "Volume fration of fiber contents",
+            "scale": "Scaleing of fibers, to avoid contacting of fibers",
+            "step_size": "Length of resolution to fiber direction."
+        }
+
+        param_rows = []
+        for key in self.model_inputs.keys():
+            row = ft.Row([
+                ft.Text(descriptions[key], width=300),
+                self.model_inputs[key],
+                ft.Text(units[key], width=100)
+            ], alignment=ft.MainAxisAlignment.START)
+            param_rows.append(row)
+
+        return ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER)
+
     def _build_compute_compressive_strength_button(self):
         return ft.Row([
             ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
             ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
-            ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280),
-            ], alignment=ft.MainAxisAlignment.CENTER)
+            ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280)
+        ], alignment=ft.MainAxisAlignment.CENTER)
 
     def _build_image_input_row(self):
         return ft.Row([
@@ -167,6 +231,13 @@ class App(ft.Column):
             ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
             ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
             ft.TextButton("Export data", on_click=self._export_histgram, width=280)
+        ], alignment=ft.MainAxisAlignment.CENTER)
+    
+    def _build_modelconstruction_button(self):
+        return ft.Row([
+            ft.TextButton("Apply Parameters", on_click=self._apply_model_params, width=280),
+            ft.TextButton("Generate stl file", on_click=self._model_construction, width=280),
+            ft.TextButton("Export STL file", on_click=self._export_stl, width=280)
         ], alignment=ft.MainAxisAlignment.CENTER)
 
     def _select_file(self, e):
@@ -249,6 +320,49 @@ class App(ft.Column):
             self.UCS, self.UCstrain, self.sigma, self.eps = estimate_compression_strength_from_profile(self.varphi, self.material_params)
         except Exception as ex:
             print(f"[ERROR] {ex}")
+
+    def _model_construction(self, e):
+        fibers = Fibers()
+        if self.volume is None:
+            print("[ERROR] Volume not imported.")
+            return
+        if self.fiber_diameter is None:
+            print("[ERROR] Fiber diameter must be set.")
+        if self.fiber_volume_fraction is None:
+            print("[ERROR] Fiber volume fraction must be set.")
+            return
+        if self.scale is None:
+            print("[ERROR] Scale must be set.")
+        if self.step_size is None:
+            print(f"[ERROR] step_size must be set.")
+        fibers.initialize(self.volume.shape, float(self.fiber_diameter[0]),
+                          float(self.fiber_volume_fraction[0]),
+                          float(self.scale[0]))
+        step_size = int(self.step_size[0])
+        print("[INFO] Model construction started.")
+        for i in range(self.start_index, self.end_index, step_size):
+            print(f"[INFO] Position: z={i}/{self.end_index}...")
+            direction_x = step_size*np.tan(np.deg2rad(self.theta))[i]
+            direction_y = step_size*np.tan(np.deg2rad(self.phi))[i]
+            fibers.move_points(direction_x, direction_y)
+            fibers.update_fiber(i, fibers.points)
+        self.fibers_model = fibers
+        print("[SUCCESS] Model construction completed.")
+        pass
+
+    def _export_stl(self, e):
+        if self.fibers_model is None:
+            print("[ERROR] Fibers model not constructed.")
+            return
+        try:
+            mesh = generate_fiber_stl(self.fibers_model)
+            self.file_picker_save_volume.on_result = lambda ev: self._save_mesh(ev, mesh)
+            self.file_picker_save_volume.save_file(
+                dialog_title="Save fibers as STL",
+                file_name="fibers.stl"
+            )
+        except Exception as ex:
+            print(f"[ERROR] Failed to save fibers: {ex}")
     
     def _export_sscurve(self, e):
         if self.UCS is None:
@@ -293,6 +407,17 @@ class App(ft.Column):
         else:
             print("[INFO] Save cancelled.")
 
+    def _save_mesh(self, e: ft.FilePickerResultEvent, mesh):
+        
+        if e.path:
+            try:
+                mesh.save(e.path)
+                print(f"[SUCCESS] Mesh saved to {e.path}")
+            except Exception as ex:
+                print(f"[ERROR] Failed to save mesh: {ex}")
+        else:
+            print("[INFO] Save cancelled.")
+
     def _apply_material_params(self, e):
         try:
             self.material_params = MaterialParams(
@@ -307,6 +432,17 @@ class App(ft.Column):
             print("[SUCCESS] Material parameters applied.")
         except ValueError as ex:
             print(f"[ERROR] Invalid material parameter: {ex}")
+
+    def _apply_model_params(self, e):
+
+        try:
+            self.fiber_diameter=self.model_inputs["fiber_diameter"].value,
+            self.fiber_volume_fraction=self.model_inputs["fiber_volume_fraction"].value,
+            self.scale=self.model_inputs["scale"].value,
+            self.step_size=self.model_inputs["step_size"].value
+            print("[SUCCESS] Model parameters applied.")
+        except ValueError as ex:
+            print(f"[ERROR] Invalid model parameter: {ex}")
 
     def _parse_int(self, data, name, min_val=0, max_val=None):
         try:
@@ -330,11 +466,34 @@ class App(ft.Column):
 
 def main(page: ft.Page):
     page.title = "STA: Structure Tensor Analysis for composite structures"
-    page.scroll = ft.ScrollMode.ALWAYS
     file_picker_file = ft.FilePicker()
     file_picker_file_save_volume = ft.FilePicker()
     page.overlay.append(file_picker_file)
     page.overlay.append(file_picker_file_save_volume)
-    page.add(ft.Container(content=App(file_picker_file, file_picker_file_save_volume), width=1200, padding=20, alignment=ft.alignment.center))
+    app = App(file_picker_file, file_picker_file_save_volume)
+    app.page = page
+
+    page.add(
+        ft.Column([
+            ft.Text("Console Output", size=20, text_align=ft.TextAlign.CENTER),
+            ft.Container(
+                content=app.console_output,
+                height=100,
+                width=1200,
+                bgcolor="#333333",
+                padding=10,
+                alignment=ft.alignment.center
+            ),
+            ft.Container(
+                content=ft.ListView(
+                    controls=app.controls,
+                    expand=True,
+                    spacing=20,
+                    padding=20
+                ),
+                expand=True
+            )
+        ], expand=True)
+    )
 
 ft.app(target=main)

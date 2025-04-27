@@ -106,16 +106,16 @@ def compute_orientation(structure_tensor, reference_vector=None):
         tuple: Orientation angles.
     """
     if reference_vector is None:
-        print("Computing orientation function without reference vector.")
-        print("Progressing...")
+        print("[INFO] Computing orientation function without reference vector.")
+        print("[INFO] Progressing...")
         theta, phi = _orientation_function(structure_tensor)
-        print("Progress complete.")
+        print("[INFO] Progress complete.")
         return theta, phi
     else:
-        print("Computing orientation function with reference vector.")
-        print("Progressing...")
+        print("[INFO] Computing orientation function with reference vector.")
+        print("[INFO] Progressing...")
         theta = _orientation_function_reference(structure_tensor, reference_vector)
-        print("Progress complete.")
+        print("[INFO] Progress complete.")
         return theta
     
 def compute_static_data(theta, phi, varphi, drop=10):
