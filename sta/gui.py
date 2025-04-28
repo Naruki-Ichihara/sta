@@ -3,10 +3,18 @@ import numpy as np
 import sys
 import re
 import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
 from sta.io import import_image_sequence, trim_image
 from sta.analysis import compute_structure_tesnsor, compute_orientation, compute_static_data
 from sta.simulation import MaterialParams, estimate_compression_strength_from_profile
 from sta.dehom import Fibers, generate_fiber_stl
+from flet.matplotlib_chart import MatplotlibChart
+
+plt.rcParams['font.family'] = 'Sans'
+plt.rcParams['axes.prop_cycle'] = plt.cycler(color=plt.cm.viridis(np.linspace(0, 1, 10)))
+matplotlib.use("svg")
+
 
 class ConsoleOutput:
     def __init__(self, list_view_control):
@@ -36,9 +44,9 @@ class App:
             )
         sys.stdout = ConsoleOutput(self.console_output)
 
-        self.template_field = ft.TextField(hint_text="Path template", read_only=True, width=600)
-        self.digit_field = ft.TextField(hint_text="Digit", read_only=True, width=200)
-        self.format_field = ft.TextField(hint_text="Format", read_only=True, width=200)
+        self.template_field = ft.TextField(hint_text="Path template", read_only=True, width=700)
+        self.digit_field = ft.TextField(hint_text="Digit", read_only=True, width=100)
+        self.format_field = ft.TextField(hint_text="Format", read_only=True, width=100)
 
         self._init_state()
         self.controls = self._build_ui()
@@ -49,6 +57,7 @@ class App:
         self.eps = None
 
     def _init_state(self):
+        fig, ax = plt.subplots()
         self.fibers_model = None
         self.material_params = None
         self.template = ""
@@ -69,6 +78,7 @@ class App:
         self.fiber_volume_fraction = None
         self.scale = None
         self.step_size = None
+        self.chart = (MatplotlibChart(fig, expand=True))
 
     def _build_ui(self):
         return [
@@ -87,7 +97,11 @@ class App:
         ]
 
     def _section_header(self, text):
-        return ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM)
+        return ft.Column([
+            ft.Divider(thickness=2, height=50),
+            ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM),
+            ft.Divider(thickness=2, height=50),
+        ])
 
     def _build_image_input_row(self):
         return ft.Row([
@@ -95,30 +109,47 @@ class App:
             self.template_field,
             self.digit_field,
             self.format_field
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
     def _build_crop_input_row(self):
-        return ft.Row([
-            ft.TextField(hint_text="Start index", on_submit=self._set_start_index, width=150),
-            ft.TextField(hint_text="End index", on_submit=self._set_end_index, width=150),
-            ft.TextField(hint_text="Start Pixel x", on_submit=self._set_start_pixel_x, width=150),
-            ft.TextField(hint_text="Start Pixel y", on_submit=self._set_start_pixel_y, width=150),
-            ft.TextField(hint_text="End Pixel x", on_submit=self._set_end_pixel_x, width=150),
-            ft.TextField(hint_text="End Pixel y", on_submit=self._set_end_pixel_y, width=150)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        self.crop_inputs = {
+            "start_index": ft.TextField(width=100),
+            "end_index": ft.TextField(width=100),
+            "start_pixel_x": ft.TextField(width=100),
+            "start_pixel_y": ft.TextField(width=100),
+            "end_pixel_x": ft.TextField(width=100),
+            "end_pixel_y": ft.TextField(width=100)
+        }
 
-    def _build_import_buttons(self):
+        descriptions = {
+        "start_index": "Frame number to start importing",
+        "end_index": "Frame number to stop importing",
+        "start_pixel_x": "Start pixel X-coordinate for cropping",
+        "start_pixel_y": "Start pixel Y-coordinate for cropping",
+        "end_pixel_x": "End pixel X-coordinate for cropping",
+        "end_pixel_y": "End pixel Y-coordinate for cropping"
+        }
+
+        param_rows = []
+        for key in self.crop_inputs.keys():
+            row = ft.Row([
+                ft.Text(descriptions[key], width=300),
+                self.crop_inputs[key]
+            ])
+            param_rows.append(row)
+
         return ft.Row([
-            ft.TextButton("Import image sequence", on_click=self._import_images, width=280),
-            ft.TextButton("Save volume as npy", on_click=self._save_volume, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+            ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
+            ft.Image(src="images\crop_explanation.tif", width=700)
+        ])
+
 
     def _build_orientation_row(self):
         return ft.Row([
             ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
             ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
             ft.TextButton("Export data", on_click=self._export_histgram, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
     def _build_material_param_inputs(self):
         self.material_inputs = {
@@ -157,10 +188,12 @@ class App:
                 ft.Text(descriptions[key], width=300),
                 self.material_inputs[key],
                 ft.Text(units[key], width=100)
-            ], alignment=ft.MainAxisAlignment.START)
+            ])
             param_rows.append(row)
 
-        return ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER)
+        return ft.Row([
+            ft.Column(controls=param_rows, spacing=10),
+            self.chart])
     
     def _build_model_params_inputs(self):
         self.model_inputs = {
@@ -190,17 +223,17 @@ class App:
                 ft.Text(descriptions[key], width=300),
                 self.model_inputs[key],
                 ft.Text(units[key], width=100)
-            ], alignment=ft.MainAxisAlignment.START)
+            ])
             param_rows.append(row)
 
-        return ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER)
+        return ft.Column(controls=param_rows, spacing=10)
 
     def _build_compute_compressive_strength_button(self):
         return ft.Row([
             ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
             ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
             ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
     def _build_image_input_row(self):
         return ft.Row([
@@ -208,37 +241,29 @@ class App:
             self.template_field,
             self.digit_field,
             self.format_field
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
-    def _build_crop_input_row(self):
-        return ft.Row([
-            ft.TextField(hint_text="Start index", on_submit=self._set_start_index, width=150),
-            ft.TextField(hint_text="End index", on_submit=self._set_end_index, width=150),
-            ft.TextField(hint_text="Start Pixel x", on_submit=self._set_start_pixel_x, width=150),
-            ft.TextField(hint_text="Start Pixel y", on_submit=self._set_start_pixel_y, width=150),
-            ft.TextField(hint_text="End Pixel x", on_submit=self._set_end_pixel_x, width=150),
-            ft.TextField(hint_text="End Pixel y", on_submit=self._set_end_pixel_y, width=150),
-        ], alignment=ft.MainAxisAlignment.CENTER)
 
     def _build_import_buttons(self):
         return ft.Row([
+            ft.TextButton("Apply parameters", on_click=self._apply_crop_params, width=280),
             ft.TextButton("Import image sequence", on_click=self._import_images, width=280),
             ft.TextButton("Save volume as npy", on_click=self._save_volume, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
     def _build_orientation_row(self):
         return ft.Row([
             ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
             ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
             ft.TextButton("Export data", on_click=self._export_histgram, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
     
     def _build_modelconstruction_button(self):
         return ft.Row([
             ft.TextButton("Apply Parameters", on_click=self._apply_model_params, width=280),
             ft.TextButton("Generate stl file", on_click=self._model_construction, width=280),
             ft.TextButton("Export STL file", on_click=self._export_stl, width=280)
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ])
 
     def _select_file(self, e):
         def pick_result(ev: ft.FilePickerResultEvent):
@@ -265,13 +290,6 @@ class App:
 
         self.file_picker_file.on_result = pick_result
         self.file_picker_file.pick_files(allow_multiple=False, dialog_title="Select First Image File")
-
-    def _set_start_index(self, e): self.start_index = self._parse_int(e.data, "Start index")
-    def _set_end_index(self, e): self.end_index = self._parse_int(e.data, "End index")
-    def _set_start_pixel_x(self, e): self.start_pixel_x = self._parse_int(e.data, "Start Pixel X")
-    def _set_start_pixel_y(self, e): self.start_pixel_y = self._parse_int(e.data, "Start Pixel Y")
-    def _set_end_pixel_x(self, e): self.end_pixel_x = self._parse_int(e.data, "End Pixel X")
-    def _set_end_pixel_y(self, e): self.end_pixel_y = self._parse_int(e.data, "End Pixel Y")
 
     def _set_noise_scale(self, e):
         try:
@@ -320,6 +338,12 @@ class App:
             self.UCS, self.UCstrain, self.sigma, self.eps = estimate_compression_strength_from_profile(self.varphi, self.material_params)
         except Exception as ex:
             print(f"[ERROR] {ex}")
+
+        fig, ax = plt.subplots()
+        ax.set_xlabel("Axial compressive strain [-]")
+        ax.set_ylabel("Axial compressive stress [MPa]")
+        ax.plot(self.eps, self.sigma, label="Stress-Strain Curve")
+        self.chart = MatplotlibChart(fig, expand=True, height=400, width=800)
 
     def _model_construction(self, e):
         fibers = Fibers()
@@ -418,6 +442,18 @@ class App:
         else:
             print("[INFO] Save cancelled.")
 
+    def _apply_crop_params(self, e):
+        try:
+            self.start_index = self._parse_int(self.crop_inputs["start_index"].value, "Start index")
+            self.end_index = self._parse_int(self.crop_inputs["end_index"].value, "End index")
+            self.start_pixel_x = self._parse_int(self.crop_inputs["start_pixel_x"].value, "Start Pixel X")
+            self.start_pixel_y = self._parse_int(self.crop_inputs["start_pixel_y"].value, "Start Pixel Y")
+            self.end_pixel_x = self._parse_int(self.crop_inputs["end_pixel_x"].value, "End Pixel X")
+            self.end_pixel_y = self._parse_int(self.crop_inputs["end_pixel_y"].value, "End Pixel Y")
+            print(f"[INFO] Parameters applied.")
+        except ValueError as ex:
+            print(f"[ERROR] Invalid crop parameter: {ex}") 
+
     def _apply_material_params(self, e):
         try:
             self.material_params = MaterialParams(
@@ -434,7 +470,6 @@ class App:
             print(f"[ERROR] Invalid material parameter: {ex}")
 
     def _apply_model_params(self, e):
-
         try:
             self.fiber_diameter=self.model_inputs["fiber_diameter"].value,
             self.fiber_volume_fraction=self.model_inputs["fiber_volume_fraction"].value,
@@ -466,6 +501,9 @@ class App:
 
 def main(page: ft.Page):
     page.title = "STA: Structure Tensor Analysis for composite structures"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    page.window_width = 1280
+    page.window_height = 2000
     file_picker_file = ft.FilePicker()
     file_picker_file_save_volume = ft.FilePicker()
     page.overlay.append(file_picker_file)
@@ -474,22 +512,20 @@ def main(page: ft.Page):
     app.page = page
 
     page.add(
-        ft.Column([
+            ft.Column([
             ft.Text("Console Output", size=20, text_align=ft.TextAlign.CENTER),
             ft.Container(
                 content=app.console_output,
                 height=100,
-                width=1200,
                 bgcolor="#333333",
-                padding=10,
-                alignment=ft.alignment.center
+                padding=ft.padding.only(left=20),
             ),
             ft.Container(
                 content=ft.ListView(
                     controls=app.controls,
                     expand=True,
-                    spacing=20,
-                    padding=20
+                    spacing=30,
+                    padding=ft.padding.only(left=10)
                 ),
                 expand=True
             )
