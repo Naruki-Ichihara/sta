@@ -1,6 +1,7 @@
 import flet as ft
 import numpy as np
 import sys
+import os
 import re
 import pandas as pd
 import matplotlib
@@ -15,6 +16,27 @@ plt.rcParams['font.family'] = 'Sans'
 plt.rcParams['axes.prop_cycle'] = plt.cycler(color=plt.cm.viridis(np.linspace(0, 1, 10)))
 matplotlib.use("svg")
 
+# Descriptions
+TITLE = "STRONG"
+VERSION = "0.0.1"
+DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics for cOmpressive streNGth sstimation and digital twin development. This application is designed to analyze and visualize " \
+        "the structure of composite materials using image sequences. It allows users to import image sequences, compute orientations, estimate compressive strength, and generate 3D models of fibers."
+HEADER_1 = "Step 1: Import Image Sequences"
+DESCRIPTION_1 = "Import image sequences from a folder. The application will automatically detect the file format and number of digits in the filenames."
+HEADER_2 = "Step 2: Compute orientations."
+DESCRIPTION_2 = "Compute orientations from the imported image sequence."
+HEADER_3 = "Step 3: Estimate Compressive strength."
+DESCRIPTION_3 = "Estimate compressive strength from the computed orientations."
+HEADER_4 = "Step 4: Rebuild 3D model of fibers."
+DESCRIPTION_4 = "Generate 3D model of fibers from the computed orientations."
+
+def resource_path(relative_path):
+    try:\
+        base_path = sys._MEIPASS
+    except Exception:\
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
 
 class ConsoleOutput:
     def __init__(self, list_view_control):
@@ -81,8 +103,12 @@ class App:
         self.chart = (MatplotlibChart(fig, expand=True))
 
     def _build_ui(self):
+        
         return [
-            self._section_header("Step 1: Import Image Sequences."),
+            self._section_header(TITLE + " version:" + VERSION),
+            self._section_description(DESCRIPTION),
+            self._section_header(HEADER_1),
+            self._section_description(DESCRIPTION_1),
             self._build_image_input_row(),
             self._build_crop_input_row(),
             self._build_import_buttons(),
@@ -96,19 +122,21 @@ class App:
             self._build_modelconstruction_button()
         ]
 
+    def _section_title(self, title):
+        return ft.Column([ft.Container(
+            content=ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE))])
+
     def _section_header(self, text):
         return ft.Column([
-            ft.Divider(thickness=2, height=50),
             ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM),
-            ft.Divider(thickness=2, height=50),
         ])
 
-    def _build_image_input_row(self):
-        return ft.Row([
-            ft.TextButton("Select first image", on_click=self._select_file, width=160),
-            self.template_field,
-            self.digit_field,
-            self.format_field
+    def _section_description(self, description):
+        return ft.Column([ft.Container(
+            content=ft.Text(description, size=14, color="gray"),
+            width=1000,
+            padding=ft.padding.only(left=30, right=10)),
+            ft.Divider(thickness=2, height=50),
         ])
 
     def _build_crop_input_row(self):
@@ -140,7 +168,7 @@ class App:
 
         return ft.Row([
             ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
-            ft.Image(src="images\crop_explanation.tif", width=700)
+            ft.Image(src=resource_path("images/crop_explanation.tif"), width=700)
         ])
 
 
@@ -192,8 +220,7 @@ class App:
             param_rows.append(row)
 
         return ft.Row([
-            ft.Column(controls=param_rows, spacing=10),
-            self.chart])
+            ft.Column(controls=param_rows, spacing=10)])
     
     def _build_model_params_inputs(self):
         self.model_inputs = {
@@ -359,10 +386,10 @@ class App:
             print("[ERROR] Scale must be set.")
         if self.step_size is None:
             print(f"[ERROR] step_size must be set.")
-        fibers.initialize(self.volume.shape, float(self.fiber_diameter[0]),
-                          float(self.fiber_volume_fraction[0]),
-                          float(self.scale[0]))
-        step_size = int(self.step_size[0])
+        fibers.initialize(self.volume.shape, float(self.fiber_diameter),
+                          float(self.fiber_volume_fraction),
+                          float(self.scale))
+        step_size = int(self.step_size)
         print("[INFO] Model construction started.")
         for i in range(self.start_index, self.end_index, step_size):
             print(f"[INFO] Position: z={i}/{self.end_index}...")
@@ -372,7 +399,6 @@ class App:
             fibers.update_fiber(i, fibers.points)
         self.fibers_model = fibers
         print("[SUCCESS] Model construction completed.")
-        pass
 
     def _export_stl(self, e):
         if self.fibers_model is None:
@@ -471,9 +497,9 @@ class App:
 
     def _apply_model_params(self, e):
         try:
-            self.fiber_diameter=self.model_inputs["fiber_diameter"].value,
-            self.fiber_volume_fraction=self.model_inputs["fiber_volume_fraction"].value,
-            self.scale=self.model_inputs["scale"].value,
+            self.fiber_diameter=self.model_inputs["fiber_diameter"].value
+            self.fiber_volume_fraction=self.model_inputs["fiber_volume_fraction"].value
+            self.scale=self.model_inputs["scale"].value
             self.step_size=self.model_inputs["step_size"].value
             print("[SUCCESS] Model parameters applied.")
         except ValueError as ex:
@@ -494,13 +520,15 @@ class App:
             print("[ERROR] No volume to save.")
             return
         if e.path:
-            np.save(e.path, self.volume)
+            # Swap axis
+            swapped_volume = np.swapaxes(self.volume, 0, 2)
+            np.save(e.path, swapped_volume)
             print(f"[SUCCESS] Volume saved to {e.path}")
         else:
             print("[INFO] Save cancelled.")
 
 def main(page: ft.Page):
-    page.title = "STA: Structure Tensor Analysis for composite structures"
+    page.title = "STRONG v0.0.0"
     page.theme_mode = ft.ThemeMode.LIGHT
     page.window_width = 1280
     page.window_height = 2000
