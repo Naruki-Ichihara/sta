@@ -4,36 +4,44 @@ import sys
 import os
 import re
 import pandas as pd
-import matplotlib
-import matplotlib.pyplot as plt
-from sta.io import import_image_sequence, trim_image
-from sta.analysis import compute_structure_tesnsor, compute_orientation, compute_static_data
-from sta.simulation import MaterialParams, estimate_compression_strength_from_profile
-from sta.dehom import Fibers, generate_fiber_stl
-from flet.matplotlib_chart import MatplotlibChart
+import strong as st
 
-plt.rcParams['font.family'] = 'Sans'
-plt.rcParams['axes.prop_cycle'] = plt.cycler(color=plt.cm.viridis(np.linspace(0, 1, 10)))
-matplotlib.use("svg")
-
-# Descriptions
+# Hardcoded constants
 TITLE = "STRONG"
 VERSION = "0.0.1"
-DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics for cOmpressive streNGth sstimation and digital twin development. This application is designed to analyze and visualize " \
-        "the structure of composite materials using image sequences. It allows users to import image sequences, compute orientations, estimate compressive strength, and generate 3D models of fibers."
+DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics " \
+        "for cOmpressive streNGth simulation and digital twin development. This application is designed to analyze and visualize " \
+        "the structure of composite materials using image sequences. " \
+        "It allows users to import image sequences, compute orientations, estimate compressive strength, and generate 3D models of fibers. "
 HEADER_1 = "Step 1: Import Image Sequences"
-DESCRIPTION_1 = "Import image sequences from a folder. The application will automatically detect the file format and number of digits in the filenames."
-HEADER_2 = "Step 2: Compute orientations."
-DESCRIPTION_2 = "Compute orientations from the imported image sequence."
+DESCRIPTION_1 = "Import image sequences from a folder." \
+        "The application will automatically detect the file format and number of digits in the filenames. " \
+        "Supported file types are: [dcm, png, tiff, tif]" \
+        "Select the first image file to set the template for the sequence." \
+        "Specify the range of frames to import and the pixel coordinates for cropping." \
+        "The imported volume will be saved as a NumPy array with 'Save as npy button'." \
+        "The npy file can be visualized using tomviz (https://tomviz.org/)."
+HEADER_2 = "Step 2: Compute angles of fibers."
+DESCRIPTION_2 = "Compute orientations from the imported image sequence. "\
+                "This method can compute three metrics of angles: axial orientation (theta), in-plane orientation (phi), "\
+                "and out-of-plane orientation (varphi). Determinations of each orientation are explaned in following figure. "\
+                "Axial orientation is non-negative metric represents angle between the expected UD axis (z-axis) and "\
+                "the local fiber. This "
 HEADER_3 = "Step 3: Estimate Compressive strength."
 DESCRIPTION_3 = "Estimate compressive strength from the computed orientations."
 HEADER_4 = "Step 4: Rebuild 3D model of fibers."
 DESCRIPTION_4 = "Generate 3D model of fibers from the computed orientations."
 
+
+FILE_NAME_VOLUME = "volume.npy"
+FILE_NAME_ORIENTATION_CSV = "orientation_data.csv"
+FILE_NAME_SSCURVE = "streee_strain.csv"
+FILE_NAME_FIBER = "fibers.stl"
+
 def resource_path(relative_path):
-    try:\
+    try:
         base_path = sys._MEIPASS
-    except Exception:\
+    except Exception:
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
@@ -79,7 +87,6 @@ class App:
         self.eps = None
 
     def _init_state(self):
-        fig, ax = plt.subplots()
         self.fibers_model = None
         self.material_params = None
         self.template = ""
@@ -100,7 +107,6 @@ class App:
         self.fiber_volume_fraction = None
         self.scale = None
         self.step_size = None
-        self.chart = (MatplotlibChart(fig, expand=True))
 
     def _build_ui(self):
         
@@ -112,12 +118,15 @@ class App:
             self._build_image_input_row(),
             self._build_crop_input_row(),
             self._build_import_buttons(),
-            self._section_header("Step 2: Compute orientations."),
+            self._section_header(HEADER_2),
+            self._section_description(DESCRIPTION_2),
             self._build_orientation_row(),
-            self._section_header("Step 3: Estimate Compressive strength."),
+            self._section_header(HEADER_3),
+            self._section_description(DESCRIPTION_3),
             self._build_material_param_inputs(),
             self._build_compute_compressive_strength_button(),
-            self._section_header("Step 4: Rebuild 3D model of fibers."),
+            self._section_header(HEADER_4),
+            self._section_description(DESCRIPTION_4),
             self._build_model_params_inputs(),
             self._build_modelconstruction_button()
         ]
@@ -128,6 +137,7 @@ class App:
 
     def _section_header(self, text):
         return ft.Column([
+            ft.Divider(thickness=2, height=80),
             ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM),
         ])
 
@@ -327,8 +337,8 @@ class App:
 
     def _import_images(self, e):
         try:
-            trim = lambda x: trim_image(x, (self.start_pixel_x, self.start_pixel_y), (self.end_pixel_x, self.end_pixel_y))
-            self.volume = import_image_sequence(self.template, self.start_index, self.end_index, self.digit, self.format, processing=trim)
+            trim = lambda x: st.trim_image(x, (self.start_pixel_x, self.start_pixel_y), (self.end_pixel_x, self.end_pixel_y))
+            self.volume = st.import_image_sequence(self.template, self.start_index, self.end_index, self.digit, self.format, processing=trim)
         except Exception as ex:
             print(f"[ERROR] {ex}")
 
@@ -336,7 +346,7 @@ class App:
         self.file_picker_save_volume.on_result = self._save_volume_to_path
         self.file_picker_save_volume.save_file(
             dialog_title="Save Volume As",
-            file_name="ct_volume.npy"
+            file_name=FILE_NAME_VOLUME
         )
         print(f"[SUCCESS] Volume saved to {e.path}")
 
@@ -345,9 +355,9 @@ class App:
         try:
             if self.volume is None:
                 raise ValueError("Volume must be imported first.")
-            tensor = compute_structure_tesnsor(self.volume, self.noise_scale)
-            self.theta, self.phi = compute_orientation(tensor)
-            self.varphi = compute_orientation(tensor, reference_vector=[1, 0, 0])
+            tensor = st.compute_structure_tensor(self.volume, self.noise_scale)
+            self.theta, self.phi = st.compute_orientation(tensor)
+            self.varphi = st.compute_orientation(tensor, reference_vector=[1, 0, 0])
             print("[SUCCESS] Orientations computed.")
         except Exception as ex:
             print(f"[ERROR] {ex}")
@@ -362,18 +372,12 @@ class App:
             return
 
         try:
-            self.UCS, self.UCstrain, self.sigma, self.eps = estimate_compression_strength_from_profile(self.varphi, self.material_params)
+            self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength_from_profile(self.varphi, self.material_params)
         except Exception as ex:
             print(f"[ERROR] {ex}")
 
-        fig, ax = plt.subplots()
-        ax.set_xlabel("Axial compressive strain [-]")
-        ax.set_ylabel("Axial compressive stress [MPa]")
-        ax.plot(self.eps, self.sigma, label="Stress-Strain Curve")
-        self.chart = MatplotlibChart(fig, expand=True, height=400, width=800)
-
     def _model_construction(self, e):
-        fibers = Fibers()
+        fibers = st.Fibers()
         if self.volume is None:
             print("[ERROR] Volume not imported.")
             return
@@ -405,11 +409,11 @@ class App:
             print("[ERROR] Fibers model not constructed.")
             return
         try:
-            mesh = generate_fiber_stl(self.fibers_model)
+            mesh = st.generate_fiber_stl(self.fibers_model)
             self.file_picker_save_volume.on_result = lambda ev: self._save_mesh(ev, mesh)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save fibers as STL",
-                file_name="fibers.stl"
+                file_name=FILE_NAME_FIBER
             )
         except Exception as ex:
             print(f"[ERROR] Failed to save fibers: {ex}")
@@ -427,7 +431,7 @@ class App:
             self.file_picker_save_volume.on_result = lambda ev: self._save_csv_to_path(ev, df)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save SS curve Data As CSV",
-                file_name="SS_cureve.csv"
+                file_name=FILE_NAME_SSCURVE
             )
         except Exception as ex:
             print(f"[ERROR] Failed to prepare data: {ex}")
@@ -438,7 +442,7 @@ class App:
             return
 
         try:
-            df = compute_static_data(self.theta, self.phi, self.varphi, drop=int(self.noise_scale))
+            df = st.compute_static_data(self.theta, self.phi, self.varphi, drop=int(self.noise_scale))
             self.file_picker_save_volume.on_result = lambda ev: self._save_csv_to_path(ev, df)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save Orientation Data As CSV",
@@ -482,7 +486,7 @@ class App:
 
     def _apply_material_params(self, e):
         try:
-            self.material_params = MaterialParams(
+            self.material_params = st.MaterialParams(
                 longitudinal_modulus=float(self.material_inputs["longitudinal_modulus"].value),
                 transverse_modulus=float(self.material_inputs["transverse_modulus"].value),
                 poisson_ratio=float(self.material_inputs["poisson_ratio"].value),

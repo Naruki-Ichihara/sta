@@ -1,6 +1,5 @@
 import numpy as np
 import numba
-import numba_progress
 from skimage.feature import structure_tensor
 import pandas as pd
 
@@ -17,14 +16,15 @@ def drop_edges_3D(width: int, volume: np.ndarray) -> np.ndarray:
     """
     return volume[width:volume.shape[0]-width, width:volume.shape[1]-width, width:volume.shape[2]-width]
 
-def compute_structure_tesnsor(volume: np.ndarray, noise_scale: int, mode: str = 'nearest') -> np.ndarray:
+def compute_structure_tensor(volume: np.ndarray, noise_scale: int, mode: str = 'nearest') -> np.ndarray:
     """
     Computes the structure tensor of a 3D volume. Based on the skimage feature structure_tensor function.
 
     Args:
         volume (np.ndarray): The input 3D volume.
         noise_scale (int): The scale for the Gaussian filter.
-        mode (str): The mode for the Gaussian filter. Default is 'nearest'.
+        mode (str): The mode for the Gaussian filter. Default is 'nearest'. 
+                    See [skimage doc.](https://scikit-image.org/docs/stable/api/skimage.feature.html#skimage.feature.structure_tensor)
 
     Returns:
         np.ndarray: The structure tensor of the input volume.
@@ -98,10 +98,13 @@ def _orientation_function_reference(structureTensor, reference_vector):
 
     return theta
 
-def compute_orientation(structure_tensor, reference_vector=None):
+def compute_orientation(structure_tensor: np.ndarray, reference_vector=None) -> tuple:
     """ Compute orientation function.
+
     Args:
         structureTensor (np.ndarray): Structure tensor.
+        reference_vector (list, optional): Reference vector. If None, the function computes the orientation without a reference vector.
+
     Returns:
         tuple: Orientation angles.
     """
@@ -118,13 +121,15 @@ def compute_orientation(structure_tensor, reference_vector=None):
         print("[INFO] Progress complete.")
         return theta
     
-def compute_static_data(theta, phi, varphi, drop=10):
+def compute_static_data(theta: np.ndarray, phi: np.ndarray, varphi: np.ndarray, drop=10) -> pd.DataFrame:
     """ Compute static data.
+
     Args:
         theta (np.ndarray): Theta angles.
         phi (np.ndarray): Phi angles.
         varphi (np.ndarray): Varphi angles.
         drop (int): Number of pixels to drop from edges.
+
     Returns:
         pd.DataFrame: Static data.
     """
@@ -151,10 +156,11 @@ def compute_static_data(theta, phi, varphi, drop=10):
     bin_varphi_series = pd.Series(bins_varphi[1:], name="Bin")
 
     # Pandas DF
-    static_df_theta = pd.DataFrame([bin_theta_series, hist_theta_series], index=["Bin", "Histgram"]).transpose()
-    static_df_phi = pd.DataFrame([bin_phi_series, hist_phi_series], index=["Bin", "Histgram"]).transpose()
-    setatic_df_varphi = pd.DataFrame([bin_varphi_series, hist_varphi_series], index=["Bin", "Histgram"]).transpose()
+    static_df_theta = pd.DataFrame([bin_theta_series, hist_theta_series], index=["Bin (theta)", "Histgram (theta)"]).transpose()
+    static_df_phi = pd.DataFrame([bin_phi_series, hist_phi_series], index=["Bin (phi)", "Histgram (phi)"]).transpose()
+    setatic_df_varphi = pd.DataFrame([bin_varphi_series, hist_varphi_series], index=["Bin (varphi)", "Histgram (varphi)"]).transpose()
 
     # Combine dataframes
     static_df = pd.concat([static_df_theta, static_df_phi, setatic_df_varphi], axis=1)
+
     return static_df

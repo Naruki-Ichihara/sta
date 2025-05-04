@@ -1,8 +1,8 @@
 services:
-  sta:
+  strong:
     restart: always
-    image: ichiharanaruki/fiberdev:latest
-    container_name: 'sta'
+    image: ubuntu/python
+    container_name: 'strong'
     working_dir: '/home/'
     tty: true
     volumes:
@@ -15,11 +15,3 @@ services:
       - WAYLAND_DISPLAY=$WAYLAND_DISPLAY
       - XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR
       - PULSE_SERVER=$PULSE_SERVER
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all
-
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]

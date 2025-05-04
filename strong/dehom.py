@@ -5,10 +5,12 @@ from scipy.spatial import KDTree
 import pyvista as pv
 
 class Fibers:
+    """
+    Class to generate and manage fibers in a 3D domain.
+    The initial positions of fibers are generated using a Poisson disk sampling method to ensure that they do not overlap.
+    The fibers can be moved in the x and y directions based on provided direction vectors, and they can be relaxed to avoid overlaps.
+    """
     def __init__(self):
-        """
-        Initialize the Fibers class with default attributes.
-        """
         self.points = None
         self.bounds = None
         self.fiber_diameter = None
@@ -16,7 +18,7 @@ class Fibers:
         self.fiber = []  # [z position, points]
         self.trajectory = []
 
-    def initialize(self, shape, fiber_diameter, fiber_volume_fraction, scale=1.0, seed=42):
+    def initialize(self, shape: tuple, fiber_diameter: float, fiber_volume_fraction: float, scale=1.0, seed=42) -> None:
         """
         Initialize the Fibers class with a given shape, fiber diameter, and volume fraction.
         The centers of the fibers are generated using a Poisson disk sampling method.
@@ -29,7 +31,7 @@ class Fibers:
             seed (int): Random seed for reproducibility.
         """
         if not shape[1] == shape[2]:
-            raise ValueError("Shape must be square")
+            raise ValueError("[ERROR] Shape must be square")
         self.bounds = shape
         self.fiber_diameter = fiber_diameter
         self.fiber_volume_fraction = fiber_volume_fraction
@@ -40,25 +42,28 @@ class Fibers:
 
         max_dim = shape[1]
         normalized_radius = fiber_diameter*scale / max_dim
-
+        print("[INFO] Sampling in progress...")
         sampler = PoissonDisk(d=2, radius=normalized_radius, seed=seed)
         points = sampler.random(num_fibers) * max_dim
         self.points = points
         self.fiber.append([0, self.points])
         self.trajectory.append(self.points.copy())
+        print("[INFO] Sampling completed.")
 
-    def update_fiber(self, position, points):
+    def update_fiber(self, position: float, points: np.ndarray) -> None:
         """
         Update the fiber data with a new position and points.
         This is used to add new layers of fibers at different z positions.
+    
         Args:
             position (float): The z position of the new layer.
             points (np.ndarray): The points of the new layer.
+
         """
         self.fiber.append([position, points])
         self.trajectory.append(points.copy())
 
-    def move_points(self, directions_x, directions_y, update=True):
+    def move_points(self, directions_x: np.ndarray, directions_y: np.ndarray, update=True, relax=True) -> np.ndarray:
         """
         Move the points in the x and y directions based on the provided direction arrays.
         The points are then relaxed to avoid overlaps.
@@ -67,6 +72,7 @@ class Fibers:
             directions_x (np.ndarray): Array of x direction vectors.
             directions_y (np.ndarray): Array of y direction vectors.
             update (bool): Whether to update the points in the object.
+            relax (bool): Whether to relax the points after moving.
 
         Returns:
             np.ndarray: The new positions of the points after moving and relaxing.
@@ -74,11 +80,14 @@ class Fibers:
         x = self.points[:, 0]
         y = self.points[:, 1]
         coords = np.array([y, x])
-        dir_x = map_coordinates(directions_x, coords, order=1, mode='nearest')
-        dir_y = map_coordinates(directions_y, coords, order=1, mode='nearest')
+        dir_x = map_coordinates(directions_x, coords, order=2, mode='nearest')
+        dir_y = map_coordinates(directions_y, coords, order=2, mode='nearest')
         directions = np.stack([dir_x, dir_y], axis=1)
         new_points = self.points + directions
-        relaxed_points = self._relax_points(new_points, self.fiber_diameter)
+        if relax:
+            relaxed_points = self._relax_points(new_points, self.fiber_diameter)
+        else:
+            relaxed_points = new_points
         if update:
             self.points = relaxed_points
         return relaxed_points
@@ -120,6 +129,8 @@ def generate_fiber_stl(fibers: Fibers) -> None:
 
     tubes = []
 
+    print("[INFO] Generating STL...")
+
     for i in range(n_fibers):
         fiber_path = []
         for z_index, (z, points) in enumerate(fibers.fiber):
@@ -134,5 +145,7 @@ def generate_fiber_stl(fibers: Fibers) -> None:
     full_mesh = tubes[0]
     for tube in tubes[1:]:
         full_mesh += tube
+
+    print("[INFO] STL generation completed.")
 
     return full_mesh

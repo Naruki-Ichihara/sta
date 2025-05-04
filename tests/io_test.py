@@ -1,7 +1,7 @@
-from sta.io import import_image_sequence, trim_image
+import strong as st
 
 def test_import_image_sequence():
-    image_sequence = import_image_sequence("tests/test_images/test_",
+    image_sequence = st.import_image_sequence("tests/test_images/test_",
                                            0,
                                            4,
                                            4,
@@ -9,8 +9,8 @@ def test_import_image_sequence():
     assert image_sequence.shape == (5, 1024, 1024)
 
 def test_trim_image():
-    trim = lambda x: trim_image(x, [200, 200], [300, 300])
-    image_sequence = import_image_sequence("tests/test_images/test_",
+    trim = lambda x: st.trim_image(x, [200, 200], [300, 300])
+    image_sequence = st.import_image_sequence("tests/test_images/test_",
                                            0,
                                            4,
                                            4,
