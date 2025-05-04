@@ -8,7 +8,7 @@ import strong as st
 
 # Hardcoded constants
 TITLE = "STRONG"
-VERSION = "0.0.1"
+VERSION = st.__version__
 DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics " \
         "for cOmpressive streNGth simulation and digital twin development. This application is designed to analyze and visualize " \
         "the structure of composite materials using image sequences. " \
@@ -16,17 +16,21 @@ DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics " 
 HEADER_1 = "Step 1: Import Image Sequences"
 DESCRIPTION_1 = "Import image sequences from a folder." \
         "The application will automatically detect the file format and number of digits in the filenames. " \
-        "Supported file types are: [dcm, png, tiff, tif]" \
+        "Supported file types are: [dcm, png, tiff, tif] " \
         "Select the first image file to set the template for the sequence." \
         "Specify the range of frames to import and the pixel coordinates for cropping." \
         "The imported volume will be saved as a NumPy array with 'Save as npy button'." \
         "The npy file can be visualized using tomviz (https://tomviz.org/)."
 HEADER_2 = "Step 2: Compute angles of fibers."
 DESCRIPTION_2 = "Compute orientations from the imported image sequence. "\
-                "This method can compute three metrics of angles: axial orientation (theta), in-plane orientation (phi), "\
-                "and out-of-plane orientation (varphi). Determinations of each orientation are explaned in following figure. "\
+                "This method can compute three metrics of angles: axial orientation (theta, See 'a'), in-plane orientation (phi, See 'b'), "\
+                "and out-of-plane orientation (varphi, See 'c'). Determinations of each orientation are explaned in right figure. "\
                 "Axial orientation is non-negative metric represents angle between the expected UD axis (z-axis) and "\
-                "the local fiber. This "
+                "the local fiber. in-plane orientation is angle in xz-plane between the expected UD axis (z-axis) and "\
+                "the local fiber. out-of-plane orientation is angle in yz-plane between the expected UD axis (z-axis) and "\
+                "the local fiber. The computed orientations are saved as a CSV file with 'Export data' button. " \
+                "The noise scale is used in the Gaussian filter to compute the structure tensor. " \
+                "See details in (https://doi.org/10.1016/j.compositesa.2021.106541)."
 HEADER_3 = "Step 3: Estimate Compressive strength."
 DESCRIPTION_3 = "Estimate compressive strength from the computed orientations."
 HEADER_4 = "Step 4: Rebuild 3D model of fibers."
@@ -111,15 +115,14 @@ class App:
     def _build_ui(self):
         
         return [
-            self._section_header(TITLE + " version:" + VERSION),
-            self._section_description(DESCRIPTION),
+            self._section_title(TITLE + " " + VERSION, DESCRIPTION),
             self._section_header(HEADER_1),
             self._section_description(DESCRIPTION_1),
             self._build_image_input_row(),
             self._build_crop_input_row(),
             self._build_import_buttons(),
             self._section_header(HEADER_2),
-            self._section_description(DESCRIPTION_2),
+            self._section_description(DESCRIPTION_2, image="images/orientation.tif"),
             self._build_orientation_row(),
             self._section_header(HEADER_3),
             self._section_description(DESCRIPTION_3),
@@ -131,23 +134,36 @@ class App:
             self._build_modelconstruction_button()
         ]
 
-    def _section_title(self, title):
-        return ft.Column([ft.Container(
-            content=ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE))])
+    def _section_title(self, title, description):
+        return ft.Row([
+            ft.Container(ft.Image(src=resource_path("images/icon.png"), width=160, height=160), 
+                         padding=ft.padding.only(top=20, left=20, right=10)),
+            ft.Column([
+            ft.Container(content=ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE)),
+            ft.Container(
+            content=ft.Text(description, size=14, color="gray"),
+            width=600,
+            padding=ft.padding.only(left=30, right=10))])])
 
     def _section_header(self, text):
         return ft.Column([
-            ft.Divider(thickness=2, height=80),
+            ft.Divider(thickness=2, height=60),
             ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM),
         ])
 
-    def _section_description(self, description):
-        return ft.Column([ft.Container(
-            content=ft.Text(description, size=14, color="gray"),
-            width=1000,
-            padding=ft.padding.only(left=30, right=10)),
-            ft.Divider(thickness=2, height=50),
-        ])
+    def _section_description(self, description, image=None):
+        if image is None:
+            return ft.Column([ft.Container(
+                content=ft.Text(description, size=14, color="gray"),
+                width=1000,
+                padding=ft.padding.only(left=30, right=10)),
+            ])
+        else:
+            return ft.Row([ft.Container(
+                content=ft.Text(description, size=14, color="gray"),
+                width=500,
+                padding=ft.padding.only(left=30, right=50)),
+            ft.Image(src=resource_path(image), width=600)])
 
     def _build_crop_input_row(self):
         self.crop_inputs = {
@@ -179,14 +195,6 @@ class App:
         return ft.Row([
             ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
             ft.Image(src=resource_path("images/crop_explanation.tif"), width=700)
-        ])
-
-
-    def _build_orientation_row(self):
-        return ft.Row([
-            ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
-            ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
-            ft.TextButton("Export data", on_click=self._export_histgram, width=280)
         ])
 
     def _build_material_param_inputs(self):
@@ -501,10 +509,10 @@ class App:
 
     def _apply_model_params(self, e):
         try:
-            self.fiber_diameter=self.model_inputs["fiber_diameter"].value
-            self.fiber_volume_fraction=self.model_inputs["fiber_volume_fraction"].value
-            self.scale=self.model_inputs["scale"].value
-            self.step_size=self.model_inputs["step_size"].value
+            self.fiber_diameter = float(self.model_inputs["fiber_diameter"].value)
+            self.fiber_volume_fraction = float(self.model_inputs["fiber_volume_fraction"].value)
+            self.scale = float(self.model_inputs["scale"].value)
+            self.step_size = int(self.model_inputs["step_size"].value)
             print("[SUCCESS] Model parameters applied.")
         except ValueError as ex:
             print(f"[ERROR] Invalid model parameter: {ex}")
@@ -532,7 +540,8 @@ class App:
             print("[INFO] Save cancelled.")
 
 def main(page: ft.Page):
-    page.title = "STRONG v0.0.0"
+    
+    page.title = "STRONG" + " " + VERSION
     page.theme_mode = ft.ThemeMode.LIGHT
     page.window_width = 1280
     page.window_height = 2000
@@ -545,13 +554,6 @@ def main(page: ft.Page):
 
     page.add(
             ft.Column([
-            ft.Text("Console Output", size=20, text_align=ft.TextAlign.CENTER),
-            ft.Container(
-                content=app.console_output,
-                height=100,
-                bgcolor="#333333",
-                padding=ft.padding.only(left=20),
-            ),
             ft.Container(
                 content=ft.ListView(
                     controls=app.controls,
@@ -560,8 +562,17 @@ def main(page: ft.Page):
                     padding=ft.padding.only(left=10)
                 ),
                 expand=True
-            )
+            ),
+            #ft.Divider(thickness=2, height=10, color="black"),
+            #ft.Text("Console Output", size=20, text_align=ft.TextAlign.CENTER),
+            ft.Container(
+                content=app.console_output,
+                height=80,
+                bgcolor="#333333",
+                padding=ft.padding.only(left=20),
+            ),
         ], expand=True)
     )
+    print("[INFO] This is STRONG. Ready.")
 
 ft.app(target=main)
