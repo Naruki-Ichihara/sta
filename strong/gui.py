@@ -5,6 +5,9 @@ import os
 import re
 import pandas as pd
 import strong as st
+from flet.matplotlib_chart import MatplotlibChart
+import matplotlib.pyplot as plt
+import json
 
 # Hardcoded constants
 TITLE = "STRONG"
@@ -14,27 +17,39 @@ DESCRIPTION = "STRONG: Structure Tensor analysis of fiber Reinforced plastics " 
         "the structure of composite materials using image sequences. " \
         "It allows users to import image sequences, compute orientations, estimate compressive strength, and generate 3D models of fibers. "
 HEADER_1 = "Step 1: Import Image Sequences"
-DESCRIPTION_1 = "Import image sequences from a folder." \
+DESCRIPTION_1 = "Import image sequences from a folder" \
         "The application will automatically detect the file format and number of digits in the filenames. " \
         "Supported file types are: [dcm, png, tiff, tif] " \
         "Select the first image file to set the template for the sequence." \
         "Specify the range of frames to import and the pixel coordinates for cropping." \
         "The imported volume will be saved as a NumPy array with 'Save as npy button'." \
         "The npy file can be visualized using tomviz (https://tomviz.org/)."
-HEADER_2 = "Step 2: Compute angles of fibers."
+HEADER_2 = "Step 2: Compute angles of fibers"
 DESCRIPTION_2 = "Compute orientations from the imported image sequence. "\
-                "This method can compute three metrics of angles: axial orientation (theta, See 'a'), in-plane orientation (phi, See 'b'), "\
-                "and out-of-plane orientation (varphi, See 'c'). Determinations of each orientation are explaned in right figure. "\
+                "This method can compute three metrics of angles: axial orientation (varphi, See 'a'), in-plane orientation (theta, See 'b'), "\
+                "and out-of-plane orientation (phi, See 'c'). Determinations of each orientation are explaned in right figure. "\
                 "Axial orientation is non-negative metric represents angle between the expected UD axis (z-axis) and "\
                 "the local fiber. in-plane orientation is angle in xz-plane between the expected UD axis (z-axis) and "\
                 "the local fiber. out-of-plane orientation is angle in yz-plane between the expected UD axis (z-axis) and "\
                 "the local fiber. The computed orientations are saved as a CSV file with 'Export data' button. " \
                 "The noise scale is used in the Gaussian filter to compute the structure tensor. " \
                 "See details in (https://doi.org/10.1016/j.compositesa.2021.106541)."
-HEADER_3 = "Step 3: Estimate Compressive strength."
-DESCRIPTION_3 = "Estimate compressive strength from the computed orientations."
-HEADER_4 = "Step 4: Rebuild 3D model of fibers."
-DESCRIPTION_4 = "Generate 3D model of fibers from the computed orientations."
+HEADER_3 = "Step 3: Estimate Compressive strength"
+DESCRIPTION_3 = "Estimate compressive strength from the computed orientations. This method considers the variation of fiber orientation."\
+                "Details are described in (https://doi.org/10.1016/j.compositesa.2023.107821). " \
+                "In this method, the compressive stress-strain curve is estimated as the superposition of weighted stress-strain curves with various "\
+                "initial fiber misalignments. Ramberg-Osgood model is used to describe the shear non-linear behavior. There two modes to cosider the orientation: "\
+                "In-plane mode and Axial orientation mode. In-plane mode is used only the in-plane orientation assuming the out-of-plane orientation is neglectable. "\
+                "In this mode, the Average mode is selectable that neglects the average misalignment of CT-image. In this case, initial misalignment must be determined manually. "\
+                "When the turn off the in-plane mode, the axial orientation mode is used. In this mode, the orienatation profile is directly used. "
+HEADER_4 = "Step 4: Rebuild 3D model of fibers"
+DESCRIPTION_4 = "Generate 3D model of fibers from the computed orientations. " \
+                "The generated model is saved as an STL file with 'Export STL file' button. " \
+                "The fiber positions are not correct because the fibers are initialized by Poisson disk sampling. " \
+                "The fibers are oriented with the computed orientations, and contacting fibers are relaxed. " \
+                "The diameter of fibers and fiber volume fraction are required. " \
+                "The scaling factor is used to avoid contacting of fibers. " \
+                "The step size is used to determine the length of resolution to fiber direction. " 
 
 
 FILE_NAME_VOLUME = "volume.npy"
@@ -69,6 +84,7 @@ class App:
     def __init__(self, file_picker_file, file_picker_save_volume):
         self.file_picker_file = file_picker_file
         self.file_picker_save_volume = file_picker_save_volume
+        self._load_material_presets()
 
         self.console_output = ft.ListView(
             controls=[],
@@ -111,6 +127,7 @@ class App:
         self.fiber_volume_fraction = None
         self.scale = None
         self.step_size = None
+        self.average_mode_disabled = True
 
     def _build_ui(self):
         
@@ -122,7 +139,7 @@ class App:
             self._build_crop_input_row(),
             self._build_import_buttons(),
             self._section_header(HEADER_2),
-            self._section_description(DESCRIPTION_2, image="images/orientation.tif"),
+            self._section_description(DESCRIPTION_2, image="assets/orientation.tif"),
             self._build_orientation_row(),
             self._section_header(HEADER_3),
             self._section_description(DESCRIPTION_3),
@@ -136,7 +153,7 @@ class App:
 
     def _section_title(self, title, description):
         return ft.Row([
-            ft.Container(ft.Image(src=resource_path("images/icon.png"), width=160, height=160), 
+            ft.Container(ft.Image(src=resource_path("assets/icon.png"), width=180, height=180), 
                          padding=ft.padding.only(top=20, left=20, right=10)),
             ft.Column([
             ft.Container(content=ft.Text(title, theme_style=ft.TextThemeStyle.HEADLINE_LARGE)),
@@ -147,7 +164,7 @@ class App:
 
     def _section_header(self, text):
         return ft.Column([
-            ft.Divider(thickness=2, height=60),
+            ft.Divider(thickness=2, height=40),
             ft.Text(text, theme_style=ft.TextThemeStyle.HEADLINE_MEDIUM),
         ])
 
@@ -194,10 +211,18 @@ class App:
 
         return ft.Row([
             ft.Column(controls=param_rows, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
-            ft.Image(src=resource_path("images/crop_explanation.tif"), width=700)
+            ft.Image(src=resource_path("assets/crop_explanation.tif"), width=700)
         ])
 
     def _build_material_param_inputs(self):
+
+        self.material_dropdown = ft.Dropdown(
+        label="Material Preset",
+        options=[ft.dropdown.Option(name) for name in self.material_presets.keys()],
+        width=300,
+        on_change=self._apply_material_preset
+        )
+
         self.material_inputs = {
             "longitudinal_modulus": ft.TextField(width=150),
             "transverse_modulus": ft.TextField(width=150),
@@ -231,14 +256,38 @@ class App:
         param_rows = []
         for key in self.material_inputs.keys():
             row = ft.Row([
-                ft.Text(descriptions[key], width=300),
+                ft.Text(descriptions[key], width=200),
                 self.material_inputs[key],
                 ft.Text(units[key], width=100)
             ])
             param_rows.append(row)
 
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.set_title("Stress-Strain Curve")
+        ax.set_xlim(0, 0.02)
+        ax.set_ylim(0, 2000)
+        ax.set_xlabel("Strain")
+        ax.set_ylabel("Stress [MPa]")
+        ax.grid(True)
+        fig.tight_layout()
+
+        self.matplotlib_chart = MatplotlibChart(fig, expand=False)
+
         return ft.Row([
-            ft.Column(controls=param_rows, spacing=10)])
+        ft.Container(
+        content=ft.Column(
+            controls=[self.material_dropdown] + param_rows,
+            spacing=10
+        ),
+        padding=10,
+        width=500
+        ),
+        ft.Container(
+        content=self.matplotlib_chart,
+        padding=50,
+        width=600
+        )
+    ])
     
     def _build_model_params_inputs(self):
         self.model_inputs = {
@@ -265,19 +314,35 @@ class App:
         param_rows = []
         for key in self.model_inputs.keys():
             row = ft.Row([
-                ft.Text(descriptions[key], width=300),
+                ft.Text(descriptions[key], width=150),
                 self.model_inputs[key],
-                ft.Text(units[key], width=100)
+                ft.Text(units[key], width=60)
             ])
             param_rows.append(row)
 
-        return ft.Column(controls=param_rows, spacing=10)
+        return ft.Row([ft.Column(controls=param_rows, spacing=10),
+                        ft.Image(src=resource_path("assets/dehom.tif"), width=750)])
 
     def _build_compute_compressive_strength_button(self):
-        return ft.Row([
+
+        self.inplane_mode = ft.Switch(label="In-plane mode", on_change=self._change_average_mode_state, value=False)
+        self.average_mode = ft.Switch(label="Average mode", value=False, disabled=True, on_change=self._change_textfield_state)
+
+        self.initial_misalignment_field = ft.TextField(
+        label="Initial misalignment",
+        disabled=True,
+        width=250
+        )
+
+        return ft.Column([
+        self.initial_misalignment_field,
+        ft.Row([
+            self.inplane_mode,
+            self.average_mode,
             ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
             ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
             ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280)
+        ])
         ])
 
     def _build_image_input_row(self):
@@ -336,6 +401,19 @@ class App:
         self.file_picker_file.on_result = pick_result
         self.file_picker_file.pick_files(allow_multiple=False, dialog_title="Select First Image File")
 
+    def _change_average_mode_state(self, e: ft.ControlEvent):
+        if self.inplane_mode.value:
+            self.average_mode.disabled = False
+        else:
+            self.average_mode.disabled = True
+            self.average_mode.value = False
+        self.average_mode.update()
+        self._change_textfield_state(None)
+
+    def _change_textfield_state(self, e):
+        self.initial_misalignment_field.disabled = not (self.inplane_mode.value and self.average_mode.value)
+        self.initial_misalignment_field.update()
+
     def _set_noise_scale(self, e):
         try:
             self.noise_scale = int(e.data)
@@ -379,10 +457,46 @@ class App:
             print("[ERROR] Volume not imported.")
             return
 
-        try:
-            self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength_from_profile(self.varphi, self.material_params)
-        except Exception as ex:
-            print(f"[ERROR] {ex}")
+        if self.inplane_mode.value:
+            mode_description = "In-plane mode"
+            if self.average_mode.value:
+                mode_description += " (Average mode)"
+        else:
+            mode_description = "Axial orientation mode"
+        print(f"[INFO] Current mode: {mode_description}")
+
+        variation = np.var(self.theta.ravel())
+        mean = np.mean(self.theta.ravel())
+
+        # Axial orientation mode
+        if not self.inplane_mode.value:
+
+            try:
+                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength_from_profile(self.varphi, self.material_params)
+                self.update_stress_strain_plot(self.eps, self.sigma)
+            except Exception as ex:
+                print(f"[ERROR] {ex}")
+
+        elif self.inplane_mode.value and not self.average_mode.value:
+
+            try:
+                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(mean, variation,
+                                                                                                 self.material_params)
+                self.update_stress_strain_plot(self.eps, self.sigma)
+            except Exception as ex:
+                print(f"[ERROR] {ex}")
+            
+        # In-plane mode with average mode
+        else:
+            try:
+                if self.initial_misalignment_field.value == "":
+                    print("[ERROR] Initial misalignment must be set.")
+                    return
+                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(float(self.initial_misalignment_field.value),
+                                                                                                      variation, self.material_params)
+                self.update_stress_strain_plot(self.eps, self.sigma)
+            except Exception as ex:
+                print(f"[ERROR] {ex}")
 
     def _model_construction(self, e):
         fibers = st.Fibers()
@@ -507,6 +621,19 @@ class App:
         except ValueError as ex:
             print(f"[ERROR] Invalid material parameter: {ex}")
 
+    def _apply_material_preset(self, e: ft.ControlEvent):
+        preset_name = e.control.value
+        if preset_name == "Custom":
+            print("[INFO] Custom preset selected. Please enter parameters manually.")
+            return
+
+        if preset_name in self.material_presets:
+            preset = self.material_presets[preset_name]
+            for key, value in preset.items():
+                self.material_inputs[key].value = str(value)
+                self.material_inputs[key].update()
+            print(f"[INFO] Material preset '{preset_name}' applied.")
+
     def _apply_model_params(self, e):
         try:
             self.fiber_diameter = float(self.model_inputs["fiber_diameter"].value)
@@ -539,6 +666,31 @@ class App:
         else:
             print("[INFO] Save cancelled.")
 
+    def update_stress_strain_plot(self, strain, stress):
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.plot(strain, stress)
+        ax.set_title("Stress-Strain Curve")
+        ax.set_xlim(0, 0.02)
+        ax.set_ylim(0, 2000)
+        ax.set_xlabel("Strain")
+        ax.set_ylabel("Stress [MPa]")
+        ax.grid(True)
+        fig.tight_layout()
+
+        self.matplotlib_chart.figure = fig
+        self.matplotlib_chart.update()
+
+    def _load_material_presets(self):
+        path = resource_path("assets\\material_params.json")
+        try:
+            with open(path, "r") as f:
+                self.material_presets = json.load(f)
+        except Exception as e:
+            print(f"[ERROR] Failed to load material presets: {e}")
+            self.material_presets = {}
+
+        self.material_presets["Custom"] = {}
+
 def main(page: ft.Page):
     
     page.title = "STRONG" + " " + VERSION
@@ -567,12 +719,11 @@ def main(page: ft.Page):
             #ft.Text("Console Output", size=20, text_align=ft.TextAlign.CENTER),
             ft.Container(
                 content=app.console_output,
-                height=80,
-                bgcolor="#333333",
-                padding=ft.padding.only(left=20),
+                height=90,
+                bgcolor="#747474",
+                padding=ft.padding.only(left=20, top=20),
             ),
         ], expand=True)
     )
-    print("[INFO] This is STRONG. Ready.")
-
+    print("[INFO] This is console that shows the outputs from this application.")
 ft.app(target=main)

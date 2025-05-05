@@ -114,28 +114,34 @@ class Fibers:
     
 def generate_fiber_stl(fibers: Fibers) -> None:
     """
-    Generate an STL file for the fibers.
+    Generate an STL file for the fibers with y-axis mirrored 
+    to convert from right-handed to left-handed coordinate system.
 
     Args:
         fibers (Fibers): The Fibers object containing fiber data.
     """
     if fibers.points is None:
         raise ValueError("No points to generate STL")
-    
+
     diameter = fibers.fiber_diameter
-    
     n_fibers = fibers.fiber[0][1].shape[0]
     radius = diameter / 2
-
     tubes = []
 
     print("[INFO] Generating STL...")
+
+    # Collect all y values to compute center_y for mirroring
+    all_y_values = []
+    for _, points in fibers.fiber:
+        all_y_values.extend([pt[1] for pt in points])
+    center_y = (max(all_y_values) + min(all_y_values)) / 2
 
     for i in range(n_fibers):
         fiber_path = []
         for z_index, (z, points) in enumerate(fibers.fiber):
             x, y = points[i]
-            fiber_path.append([x, y, z])
+            mirrored_y = 2 * center_y - y  # Reflect across center_y
+            fiber_path.append([x, mirrored_y, z])
         fiber_path = np.array(fiber_path)
 
         poly = pv.Spline(fiber_path, n_points=len(fiber_path))
@@ -147,5 +153,4 @@ def generate_fiber_stl(fibers: Fibers) -> None:
         full_mesh += tube
 
     print("[INFO] STL generation completed.")
-
     return full_mesh

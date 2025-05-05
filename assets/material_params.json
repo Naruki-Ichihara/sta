@@ -1,0 +1,20 @@
+{
+  "T800S/#2592": {
+    "longitudinal_modulus": 164000,
+    "transverse_modulus": 9100,
+    "poisson_ratio": 0.3,
+    "shear_modulus": 3200,
+    "tau_y": 25,
+    "K": 0.0007,
+    "n": 10
+  },
+  "AS4/PEEK": {
+    "longitudinal_modulus": 164000,
+    "transverse_modulus": 9100,
+    "poisson_ratio": 0.3,
+    "shear_modulus": 5450,
+    "tau_y": 46.4,
+    "K": 0.00321,
+    "n": 4.6
+  }
+}

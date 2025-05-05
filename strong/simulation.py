@@ -38,8 +38,6 @@ def estimate_compression_strength_from_profile(orientation_profile: np.ndarray,
         A tuple containing two numpy arrays: axial stress array and axial strain array.
     """
 
-    print("Calculating compression strength...")
-
     E1 = material_params.longitudinal_modulus
     E2 = material_params.transverse_modulus
     nu = material_params.poisson_ratio
@@ -166,8 +164,6 @@ def estimate_compression_strength(initial_misalignment: float,
     tau_y = material_params.tau_y
     K = material_params.K
     n = material_params.n
-
-    print("Calculating compression strength...")
 
     shear_stress_array = np.linspace(0, maximum_shear_stress, int(maximum_shear_stress/shear_stress_step_size)+1)
     shear_strain_array = (shear_stress_array/G) + K*(shear_stress_array/tau_y)**n
