@@ -7,6 +7,7 @@ import pandas as pd
 import strong as st
 from flet.matplotlib_chart import MatplotlibChart
 import matplotlib.pyplot as plt
+import matplotlib
 import json
 
 # Hardcoded constants
@@ -58,9 +59,10 @@ FILE_NAME_SSCURVE = "streee_strain.csv"
 FILE_NAME_FIBER = "fibers.stl"
 
 def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
         base_path = sys._MEIPASS
-    except Exception:
+    except AttributeError:
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
@@ -264,14 +266,14 @@ class App:
 
         fig, ax = plt.subplots(figsize=(4, 3))
         ax.set_title("Stress-Strain Curve")
-        ax.set_xlim(0, 0.02)
+        ax.set_xlim(0, 0.01)
         ax.set_ylim(0, 2000)
         ax.set_xlabel("Strain")
         ax.set_ylabel("Stress [MPa]")
         ax.grid(True)
         fig.tight_layout()
 
-        self.matplotlib_chart = MatplotlibChart(fig, expand=False)
+        #self.matplotlib_chart = MatplotlibChart(fig, expand=False)
 
         return ft.Row([
         ft.Container(
@@ -282,11 +284,11 @@ class App:
         padding=10,
         width=500
         ),
-        ft.Container(
-        content=self.matplotlib_chart,
-        padding=50,
-        width=600
-        )
+        #ft.Container(
+        #content=self.matplotlib_chart,
+        #padding=50,
+        #width=600
+        #)
     ])
     
     def _build_model_params_inputs(self):
@@ -465,24 +467,26 @@ class App:
             mode_description = "Axial orientation mode"
         print(f"[INFO] Current mode: {mode_description}")
 
-        variation = np.var(self.theta.ravel())
+        std_dev = np.sqrt(np.var(self.theta.ravel()))
         mean = np.mean(self.theta.ravel())
+
+        print(f"[INFO] Mean: {mean}, standart deviation: {std_dev}")
 
         # Axial orientation mode
         if not self.inplane_mode.value:
 
             try:
                 self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength_from_profile(self.varphi, self.material_params)
-                self.update_stress_strain_plot(self.eps, self.sigma)
+                #self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
 
         elif self.inplane_mode.value and not self.average_mode.value:
 
             try:
-                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(mean, variation,
+                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(mean, std_dev,
                                                                                                  self.material_params)
-                self.update_stress_strain_plot(self.eps, self.sigma)
+                #self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
             
@@ -493,8 +497,8 @@ class App:
                     print("[ERROR] Initial misalignment must be set.")
                     return
                 self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(float(self.initial_misalignment_field.value),
-                                                                                                      variation, self.material_params)
-                self.update_stress_strain_plot(self.eps, self.sigma)
+                                                                                                      std_dev, self.material_params)
+                #self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
 
@@ -670,7 +674,7 @@ class App:
         fig, ax = plt.subplots(figsize=(4, 3))
         ax.plot(strain, stress)
         ax.set_title("Stress-Strain Curve")
-        ax.set_xlim(0, 0.02)
+        ax.set_xlim(0, 0.01)
         ax.set_ylim(0, 2000)
         ax.set_xlabel("Strain")
         ax.set_ylabel("Stress [MPa]")
@@ -681,7 +685,7 @@ class App:
         self.matplotlib_chart.update()
 
     def _load_material_presets(self):
-        path = resource_path("assets\\material_params.json")
+        path = resource_path(r"assets\material_params.json")
         try:
             with open(path, "r") as f:
                 self.material_presets = json.load(f)

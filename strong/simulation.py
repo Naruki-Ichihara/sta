@@ -19,8 +19,8 @@ def estimate_compression_strength_from_profile(orientation_profile: np.ndarray,
                                                material_params: MaterialParams,
                                                maximum_shear_stress: float=100.0,
                                                shear_stress_step_size: float=0.1,
-                                               maximum_axial_strain: float=0.015,
-                                               maximum_fiber_misalignment: float=10,
+                                               maximum_axial_strain: float=0.01,
+                                               maximum_fiber_misalignment: float=20,
                                                fiber_misalignment_step_size: float=0.1) -> tuple[float, float, np.ndarray, np.ndarray]:
     """
     Estimate the compression strength of a composite material considering fiber misalignment deviation.
@@ -137,8 +137,8 @@ def estimate_compression_strength(initial_misalignment: float,
                          material_params: MaterialParams,
                          maximum_shear_stress: float=100.0,
                          shear_stress_step_size: float=0.1,
-                         maximum_axial_strain: float=0.015,
-                         maximum_fiber_misalignment: float=10,
+                         maximum_axial_strain: float=0.01,
+                         maximum_fiber_misalignment: float=20,
                          fiber_misalignment_step_size: float=0.1) -> tuple[float, float, np.ndarray, np.ndarray]:
     """
     Estimate the compression strength of a composite material considering fiber misalignment deviation.
