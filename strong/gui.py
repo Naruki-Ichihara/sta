@@ -367,7 +367,8 @@ class App:
         return ft.Row([
             ft.TextField(hint_text="Noise scale", on_submit=self._set_noise_scale, width=180),
             ft.TextButton("Compute orientations", on_click=self._compute_orientations, width=280),
-            ft.TextButton("Export data", on_click=self._export_histgram, width=280)
+            ft.TextButton("Export data", on_click=self._export_histgram, width=280),
+            ft.TextButton("Save orientations as npy", on_click=self._export_orientations, width=280)
         ])
     
     def _build_modelconstruction_button(self):
@@ -577,6 +578,46 @@ class App:
         except Exception as ex:
             print(f"[ERROR] Failed to prepare data: {ex}")
 
+    def _export_orientations(self, e):
+        import tempfile
+        import zipfile
+
+        if self.theta is None or self.phi is None or self.varphi is None:
+            print("[ERROR] Orientation data not computed.")
+            return
+
+        try:
+            tmpdir = tempfile.gettempdir()
+            theta_path = os.path.join(tmpdir, "theta.npy")
+            phi_path = os.path.join(tmpdir, "phi.npy")
+            varphi_path = os.path.join(tmpdir, "varphi.npy")
+            zip_path = os.path.join(tmpdir, "orientations.zip")
+
+            np.save(theta_path, self.theta)
+            np.save(phi_path, self.phi)
+            np.save(varphi_path, self.varphi)
+
+            with zipfile.ZipFile(zip_path, "w") as zipf:
+                zipf.write(theta_path, arcname="theta.npy")
+                zipf.write(phi_path, arcname="phi.npy")
+                zipf.write(varphi_path, arcname="varphi.npy")
+
+            # 中間ファイル削除
+            for f in [theta_path, phi_path, varphi_path]:
+                try:
+                    os.remove(f)
+                except Exception as rm_ex:
+                    print(f"[WARNING] Failed to delete temp file {f}: {rm_ex}")
+
+            # エクスプローラーで保存先選択
+            self.file_picker_save_volume.on_result = lambda ev: self._save_zip(ev, zip_path)
+            self.file_picker_save_volume.save_file(
+                dialog_title="Save Orientation ZIP",
+                file_name="orientations.zip"
+            )
+        except Exception as ex:
+            print(f"[ERROR] Failed during export: {ex}")
+            
     def _save_csv_to_path(self, e: ft.FilePickerResultEvent, df: pd.DataFrame):
         if e.path:
             try:
@@ -608,7 +649,18 @@ class App:
             self.end_pixel_y = self._parse_int(self.crop_inputs["end_pixel_y"].value, "End Pixel Y")
             print(f"[INFO] Parameters applied.")
         except ValueError as ex:
-            print(f"[ERROR] Invalid crop parameter: {ex}") 
+            print(f"[ERROR] Invalid crop parameter: {ex}")
+
+    def _save_zip(self, e: ft.FilePickerResultEvent, source_zip_path):
+        if e.path:
+            try:
+                import shutil
+                shutil.copy(source_zip_path, e.path)
+                print(f"[SUCCESS] ZIP saved to {e.path}")
+            except Exception as ex:
+                print(f"[ERROR] Failed to save ZIP: {ex}")
+        else:
+            print("[INFO] Save cancelled.")
 
     def _apply_material_params(self, e):
         try:
