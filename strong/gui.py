@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 import json
 
+matplotlib.use("svg")
+
 # Hardcoded constants
 TITLE = "STRONG"
 VERSION = st.__version__
@@ -273,7 +275,7 @@ class App:
         ax.grid(True)
         fig.tight_layout()
 
-        #self.matplotlib_chart = MatplotlibChart(fig, expand=False)
+        self.matplotlib_chart = MatplotlibChart(fig, expand=False)
 
         return ft.Row([
         ft.Container(
@@ -284,11 +286,11 @@ class App:
         padding=10,
         width=500
         ),
-        #ft.Container(
-        #content=self.matplotlib_chart,
-        #padding=50,
-        #width=600
-        #)
+        ft.Container(
+        content=self.matplotlib_chart,
+        padding=50,
+        width=600
+        )
     ])
     
     def _build_model_params_inputs(self):
@@ -478,7 +480,7 @@ class App:
 
             try:
                 self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength_from_profile(self.varphi, self.material_params)
-                #self.update_stress_strain_plot(self.eps, self.sigma)
+                self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
 
@@ -487,7 +489,7 @@ class App:
             try:
                 self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(mean, std_dev,
                                                                                                  self.material_params)
-                #self.update_stress_strain_plot(self.eps, self.sigma)
+                self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
             
@@ -499,7 +501,7 @@ class App:
                     return
                 self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(float(self.initial_misalignment_field.value),
                                                                                                       std_dev, self.material_params)
-                #self.update_stress_strain_plot(self.eps, self.sigma)
+                self.update_stress_strain_plot(self.eps, self.sigma)
             except Exception as ex:
                 print(f"[ERROR] {ex}")
 
