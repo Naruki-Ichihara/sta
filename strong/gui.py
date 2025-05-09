@@ -331,22 +331,40 @@ class App:
 
         self.inplane_mode = ft.Switch(label="In-plane mode", on_change=self._change_average_mode_state, value=False)
         self.average_mode = ft.Switch(label="Average mode", value=False, disabled=True, on_change=self._change_textfield_state)
+        self.manual_mode = ft.Switch(label="Manual mode", value=False, on_change=self._on_manual_mode_change)
+
+        self.legend_field = ft.TextField(
+            label="Legend",
+            value="Case-1",
+            width=250
+        )
+
+        self.standard_deviation_field = ft.TextField(
+            label="Standard deviation",
+            disabled=True,
+            width=250
+        )
 
         self.initial_misalignment_field = ft.TextField(
-        label="Initial misalignment",
-        disabled=True,
-        width=250
+            label="Initial misalignment",
+            disabled=True,
+            width=250
         )
 
         return ft.Column([
-        self.initial_misalignment_field,
-        ft.Row([
-            self.inplane_mode,
-            self.average_mode,
-            ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
-            ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
-            ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280)
-        ])
+            self.legend_field,
+            self.initial_misalignment_field,
+            self.standard_deviation_field,
+            ft.Row([
+                self.inplane_mode,
+                self.average_mode,
+                self.manual_mode,
+            ]),
+            ft.Row([
+                ft.TextButton("Apply Parameters", on_click=self._apply_material_params, width=280),
+                ft.TextButton("Compute Compressive Strength", on_click=self._compute_compressive_strength, width=280),
+                ft.TextButton("Export SS-curve", on_click=self._export_sscurve, width=280)
+            ])
         ])
 
     def _build_image_input_row(self):
@@ -457,6 +475,24 @@ class App:
         if self.material_params is None:
             print("[ERROR] Material parameters not set.")
             return
+        
+        if self.manual_mode.value:
+            mode_description = "Manual mode"
+            print(f"[INFO] Current mode: {mode_description}")
+            if self.standard_deviation_field.value == "":
+                print("[ERROR] Standard deviation must be set.")
+                return
+            if self.initial_misalignment_field.value == "":
+                print("[ERROR] Initial misalignment must be set.")
+                return
+            std_dev = float(self.standard_deviation_field.value)
+            mean = float(self.initial_misalignment_field.value)
+            try:
+                self.UCS, self.UCstrain, self.sigma, self.eps = st.estimate_compression_strength(mean, std_dev, self.material_params)
+                self.update_stress_strain_plot(self.eps, self.sigma)
+            except Exception as ex:
+                print(f"[ERROR] {ex}")
+                return
 
         if self.volume is None:
             print("[ERROR] Volume not imported.")
@@ -548,15 +584,18 @@ class App:
             print(f"[ERROR] Failed to save fibers: {ex}")
     
     def _export_sscurve(self, e):
-        if self.UCS is None:
-            print("[ERROR] Compressive strength not computed.")
+        if not hasattr(self, "stress_strain_history") or not self.stress_strain_history:
+            print("[ERROR] No stress-strain data available.")
             return
-        # stress series
-        stress_series = pd.Series(self.sigma, name="Stress")
-        strain_series = pd.Series(self.eps, name="Strain")
 
         try:
-            df = pd.DataFrame([stress_series, strain_series], index=["Stress", "Strain"]).transpose()
+            df_dict = {}
+            for i, (strain, stress) in enumerate(self.stress_strain_history):
+                label = self.ss_legend_labels[i] if hasattr(self, "ss_legend_labels") else f"Case-{i+1}"
+                df_dict[f"Strain_{label}"] = strain
+                df_dict[f"Stress_{label}"] = stress
+            df = pd.DataFrame(df_dict)
+
             self.file_picker_save_volume.on_result = lambda ev: self._save_csv_to_path(ev, df)
             self.file_picker_save_volume.save_file(
                 dialog_title="Save SS curve Data As CSV",
@@ -725,13 +764,30 @@ class App:
             print("[INFO] Save cancelled.")
 
     def update_stress_strain_plot(self, strain, stress):
+        if not hasattr(self, "stress_strain_history"):
+            self.stress_strain_history = []
+            self.ss_legend_labels = []
+
+        legend_label = self.legend_field.value.strip() or "Case-1"
+        base_label = legend_label
+        count = 1
+        while legend_label in self.ss_legend_labels:
+            count += 1
+            legend_label = f"{base_label} ({count})"
+
+        self.stress_strain_history.append((strain, stress))
+        self.ss_legend_labels.append(legend_label)
+
         fig, ax = plt.subplots(figsize=(4, 3))
-        ax.plot(strain, stress)
+        for (s, t), label in zip(self.stress_strain_history, self.ss_legend_labels):
+            ax.plot(s, t, label=label)
+
         ax.set_title("Stress-Strain Curve")
         ax.set_xlim(0, 0.01)
         ax.set_ylim(0, 2000)
         ax.set_xlabel("Strain")
         ax.set_ylabel("Stress [MPa]")
+        ax.legend()
         ax.grid(True)
         fig.tight_layout()
 
@@ -748,6 +804,31 @@ class App:
             self.material_presets = {}
 
         self.material_presets["Custom"] = {}
+
+    def _on_manual_mode_change(self, e):
+        if self.manual_mode.value:
+            # Manual mode ON
+            self.inplane_mode.disabled = True
+            self.inplane_mode.value = False
+            self.inplane_mode.update()
+
+            self.average_mode.disabled = True
+            self.average_mode.value = False
+            self.average_mode.update()
+
+            self.initial_misalignment_field.disabled = False
+            self.standard_deviation_field.disabled = False
+        else:
+            # Manual mode OFF
+            self.inplane_mode.disabled = False
+            self.inplane_mode.update()
+
+            self._change_average_mode_state(None)  # this will update average_mode + misalignment state
+
+            self.standard_deviation_field.disabled = True
+            self.standard_deviation_field.update()
+        self.initial_misalignment_field.update()
+        self.standard_deviation_field.update()
 
 def main(page: ft.Page):
     

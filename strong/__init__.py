@@ -5,7 +5,7 @@
 .. include:: ../README.md
 """
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 __author__ = "Naruki Ichihara"
 __email__ = "ichihara.naruki@gmail.com"
 __license__ = "MIT"

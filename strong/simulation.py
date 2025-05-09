@@ -69,7 +69,7 @@ def estimate_compression_strength_from_profile(orientation_profile: np.ndarray,
     # Zero fiber misalignment case
     maximum_axial_stress_value = np.max(axial_stress_matrix[0, :])
     maximum_axial_strain_value = axial_strain_matrix[0, np.argmax(axial_stress_matrix[0, :])]
-    interpolation_function = interp1d(np.array([0, maximum_axial_strain_value]), np.array([0, maximum_axial_stress_value]), kind='linear')
+    interpolation_function = interp1d(np.array([0, maximum_axial_strain_value]), np.array([0, maximum_axial_stress_value]), kind='linear', bounds_error=False, fill_value="extrapolate")
     constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
     constant_interval_stress_array = interpolation_function(constant_interval_strain_array)
     axial_strain_matrix[0, :] = constant_interval_strain_array
@@ -80,14 +80,14 @@ def estimate_compression_strength_from_profile(orientation_profile: np.ndarray,
         maximum_argment = argrelmax(axial_strain_matrix[i, :])[0]
         minimum_argment = argrelmin(axial_strain_matrix[i, :])[0]
         if len(maximum_argment) == 0:
-            interpolation_function = interp1d(axial_strain_matrix[i, :], axial_stress_matrix[i, :], kind='linear')
+            interpolation_function = interp1d(axial_strain_matrix[i, :], axial_stress_matrix[i, :], kind='linear', bounds_error=False, fill_value="extrapolate")
             constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
             constant_interval_stress_array = interpolation_function(constant_interval_strain_array)
             axial_strain_matrix[i, :] = constant_interval_strain_array
             axial_stress_matrix[i, :] = constant_interval_stress_array
         else:
-            interpolation_function_left = interp1d(axial_strain_matrix[i, :maximum_argment[0]], axial_stress_matrix[i, :maximum_argment[0]], kind='linear')
-            interpolation_function_right = interp1d(axial_strain_matrix[i, minimum_argment[0]:], axial_stress_matrix[i, minimum_argment[0]:], kind='linear')
+            interpolation_function_left = interp1d(axial_strain_matrix[i, :maximum_argment[0]], axial_stress_matrix[i, :maximum_argment[0]], kind='linear', bounds_error=False, fill_value="extrapolate")
+            interpolation_function_right = interp1d(axial_strain_matrix[i, minimum_argment[0]:], axial_stress_matrix[i, minimum_argment[0]:], kind='linear', bounds_error=False, fill_value="extrapolate")
             constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
             for j, value in enumerate(constant_interval_strain_array):
                 if value <= axial_strain_matrix[i, maximum_argment[0]]:
@@ -127,8 +127,6 @@ def estimate_compression_strength_from_profile(orientation_profile: np.ndarray,
     else:
         compression_strength = np.max(superposition_axial_stress_array)
         ultimate_strain = axial_strain_array[np.argmax(superposition_axial_stress_array)]
-
-    print(f"Compression strength: {compression_strength} MPa, Done.")
 
     return compression_strength, ultimate_strain, superposition_axial_stress_array, axial_strain_array
 
@@ -188,7 +186,7 @@ def estimate_compression_strength(initial_misalignment: float,
     # Zero fiber misalignment case
     maximum_axial_stress_value = np.max(axial_stress_matrix[0, :])
     maximum_axial_strain_value = axial_strain_matrix[0, np.argmax(axial_stress_matrix[0, :])]
-    interpolation_function = interp1d(np.array([0, maximum_axial_strain_value]), np.array([0, maximum_axial_stress_value]), kind='linear')
+    interpolation_function = interp1d(np.array([0, maximum_axial_strain_value]), np.array([0, maximum_axial_stress_value]), kind='linear', bounds_error=False, fill_value="extrapolate")
     constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
     constant_interval_stress_array = interpolation_function(constant_interval_strain_array)
     axial_strain_matrix[0, :] = constant_interval_strain_array
@@ -199,14 +197,14 @@ def estimate_compression_strength(initial_misalignment: float,
         maximum_argment = argrelmax(axial_strain_matrix[i, :])[0]
         minimum_argment = argrelmin(axial_strain_matrix[i, :])[0]
         if len(maximum_argment) == 0:
-            interpolation_function = interp1d(axial_strain_matrix[i, :], axial_stress_matrix[i, :], kind='linear')
+            interpolation_function = interp1d(axial_strain_matrix[i, :], axial_stress_matrix[i, :], kind='linear', bounds_error=False, fill_value="extrapolate")
             constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
             constant_interval_stress_array = interpolation_function(constant_interval_strain_array)
             axial_strain_matrix[i, :] = constant_interval_strain_array
             axial_stress_matrix[i, :] = constant_interval_stress_array
         else:
-            interpolation_function_left = interp1d(axial_strain_matrix[i, :maximum_argment[0]], axial_stress_matrix[i, :maximum_argment[0]], kind='linear')
-            interpolation_function_right = interp1d(axial_strain_matrix[i, minimum_argment[0]:], axial_stress_matrix[i, minimum_argment[0]:], kind='linear')
+            interpolation_function_left = interp1d(axial_strain_matrix[i, :maximum_argment[0]], axial_stress_matrix[i, :maximum_argment[0]], kind='linear', bounds_error=False, fill_value="extrapolate")
+            interpolation_function_right = interp1d(axial_strain_matrix[i, minimum_argment[0]:], axial_stress_matrix[i, minimum_argment[0]:], kind='linear', bounds_error=False, fill_value="extrapolate")
             constant_interval_strain_array = np.linspace(0, maximum_axial_strain, shear_stress_array.size)
             for j, value in enumerate(constant_interval_strain_array):
                 if value <= axial_strain_matrix[i, maximum_argment[0]]:
@@ -268,7 +266,5 @@ def estimate_compression_strength(initial_misalignment: float,
     else:
         compression_strength = np.max(superposition_axial_stress_array)
         ultimate_strain = axial_strain_array[np.argmax(superposition_axial_stress_array)]
-
-    print(f"Compression strength: {compression_strength} MPa, Done.")
 
     return compression_strength, ultimate_strain, superposition_axial_stress_array, axial_strain_array
