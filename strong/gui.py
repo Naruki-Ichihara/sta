@@ -634,9 +634,14 @@ class App:
             varphi_path = os.path.join(tmpdir, "varphi.npy")
             zip_path = os.path.join(tmpdir, "orientations.zip")
 
-            np.save(theta_path, self.theta)
-            np.save(phi_path, self.phi)
-            np.save(varphi_path, self.varphi)
+            # Swap axis
+            swapped_theta = np.swapaxes(self.theta, 0, 2)
+            swapped_phi = np.swapaxes(self.phi, 0, 2)
+            swapped_varphi = np.swapaxes(self.varphi, 0, 2)
+
+            np.save(theta_path, swapped_theta)
+            np.save(phi_path, swapped_phi)
+            np.save(varphi_path, swapped_varphi)
 
             with zipfile.ZipFile(zip_path, "w") as zipf:
                 zipf.write(theta_path, arcname="theta.npy")
